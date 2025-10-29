@@ -21,17 +21,17 @@ system:
   ionic_strength: 0.15
 
 simulation:
-  nvt_steps: 10000
-  npt_steps: 10000
-  production_steps: 100000
+  nvt_steps: 25000 # 100 ps each
+  npt_steps: 25000
+  production_steps: 25000000 # 0.004×25,000,000 = 100 ns
 
 reporting:
-  dcd_interval: 1000
-  stdout_interval: 1000
-  log_interval: 100
+  dcd_interval: 5000
+  stdout_interval: 5000
+  log_interval: 5000
 
 restraints:
-  force_constant: 10000
+  force_constant: 1000
   # MDAnalysis selection string, e.g. "protein and not name H*"
   selection: "backbone"
   #selection: "name Na"
