@@ -32,7 +32,7 @@ def load_step_size_ps(config_path: Path) -> float:
 
 
 def load_log(path: Path) -> np.ndarray:
-    return np.loadtxt(path, delimiter=",")
+    return np.loadtxt(path, delimiter=",", comments="#")
 
 
 def plot_series(time_ns: np.ndarray, values: np.ndarray, ylabel: str) -> None:
@@ -47,15 +47,25 @@ def main(log_path: Path, config_path: Path) -> None:
     data = load_log(log_path)
 
     step = data[:, 0]
-    potential_energy = data[:, 1]
-    temperature = data[:, 2]
-    volume = data[:, 3]
 
-    time_ns = step * step_size_ps / 1000.0
+    time_ns = (
+        data[:, 1] / 1000.0 if data.shape[1] > 1 else step * step_size_ps / 1000.0
+    )
 
-    plot_series(time_ns, potential_energy, "Potential energy (kJ/mol)")
-    plot_series(time_ns, temperature, "Temperature (K)")
-    plot_series(time_ns, volume, "Volume (nm^3)")
+    column_map = {
+        "Potential energy (kJ/mol)": 2,
+        "Kinetic energy (kJ/mol)": 3,
+        "Total energy (kJ/mol)": 4,
+        "Temperature (K)": 5,
+        "Pressure (bar)": 6,
+        "Volume (nm^3)": 7,
+        "Density (g/mL)": 8,
+        "Speed (ns/day)": 9,
+    }
+
+    for label, col in column_map.items():
+        if data.shape[1] > col:
+            plot_series(time_ns, data[:, col], label)
 
 
 if __name__ == "__main__":
