@@ -227,7 +227,6 @@ def build_system(
     modeller: Modeller, forcefield: ForceField, config: SimulationConfig
 ) -> openmm.System:
     kwargs = dict(
-        modeller.topology,
         nonbondedMethod=PME,
         nonbondedCutoff=config.nonbonded_cutoff,
         constraints=HBonds,
@@ -235,7 +234,7 @@ def build_system(
     )
     if config.hydrogen_mass is not None:
         kwargs["hydrogenMass"] = config.hydrogen_mass
-    return forcefield.createSystem(**kwargs)
+    return forcefield.createSystem(modeller.topology, **kwargs)
 
 
 def build_simulation(
@@ -278,13 +277,9 @@ def attach_reporters(simulation: Simulation, config: SimulationConfig) -> None:
                 kineticEnergy=True,
                 totalEnergy=True,
                 temperature=True,
-                pressure=True,
                 volume=True,
                 density=True,
                 speed=True,
-                progress=True,
-                elapsedTime=True,
-                remainingTime=True,
             ),
             StateDataReporter(
                 str(config.log_path),
@@ -296,13 +291,9 @@ def attach_reporters(simulation: Simulation, config: SimulationConfig) -> None:
                 kineticEnergy=True,
                 totalEnergy=True,
                 temperature=True,
-                pressure=True,
                 volume=True,
                 density=True,
                 speed=True,
-                progress=True,
-                elapsedTime=True,
-                remainingTime=True,
             ),
         ]
     )

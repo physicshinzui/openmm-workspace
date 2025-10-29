@@ -52,18 +52,17 @@ def main(log_path: Path, config_path: Path) -> None:
         data[:, 1] / 1000.0 if data.shape[1] > 1 else step * step_size_ps / 1000.0
     )
 
-    column_map = {
-        "Potential energy (kJ/mol)": 2,
-        "Kinetic energy (kJ/mol)": 3,
-        "Total energy (kJ/mol)": 4,
-        "Temperature (K)": 5,
-        "Pressure (bar)": 6,
-        "Volume (nm^3)": 7,
-        "Density (g/mL)": 8,
-        "Speed (ns/day)": 9,
-    }
+    column_map = [
+        ("Potential energy (kJ/mol)", 2),
+        ("Kinetic energy (kJ/mol)", 3),
+        ("Total energy (kJ/mol)", 4),
+        ("Temperature (K)", 5),
+        ("Volume (nm^3)", 6),
+        ("Density (g/mL)", 7),
+        ("Speed (ns/day)", 8),
+    ]
 
-    for label, col in column_map.items():
+    for label, col in column_map:
         if data.shape[1] > col:
             plot_series(time_ns, data[:, col], label)
 

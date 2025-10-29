@@ -13,7 +13,7 @@ thermodynamics:
   temperature: 300
   pressure: 1
   friction_coefficient: 1.0
-  step_size: 0.002
+  step_size: 0.004  # 4 fs with HMR
 
 system:
   nonbonded_cutoff: 1.0
@@ -22,12 +22,12 @@ system:
   hydrogen_mass: 4.0
 
 simulation:
-  nvt_steps: 50000 # 100 ps each if 0.002
-  npt_steps: 50000
-  production_steps: 50000000 # 0.002×25,000,000 = 100 ns
+  nvt_steps: 25000         # 25,000 × 0.004 ps = 100 ps
+  npt_steps: 25000         # 25,000 × 0.004 ps = 100 ps
+  production_steps: 250000000  # 250,000,000 × 0.004 ps = 1,000,000 ps = 1 µs
 
 reporting:
-  dcd_interval: 5000
+  dcd_interval: 25000
   stdout_interval: 5000
   log_interval: 5000
 
