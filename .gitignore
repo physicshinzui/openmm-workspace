@@ -12,3 +12,5 @@ traj_fixed.dcd
 top.pdb
 minimized.pdb
 out.dcd
+checkpoint.chk
+*.chk

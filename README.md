@@ -74,3 +74,4 @@ python utils/monitor_basic_quantity.py
 - 実行時に `python 01_md.py --config config.yaml --restart` とすると、チェックポイントを読み込んで Production ステージだけを再開します。
 - 別のファイル名を使いたい場合は `--checkpoint custom.chk` のように CLI 引数で上書きできます。
 - チェックポイントは `config.reporting.log_interval` の頻度で更新されます。
+- 再開時は `top.pdb`（`paths.topology`）が必要です。初回実行で自動生成されるので削除しないでください。

@@ -226,6 +226,11 @@ def build_modeller(forcefield: ForceField, config: SimulationConfig) -> Modeller
     return modeller
 
 
+def load_existing_modeller(topology_path: Path) -> Modeller:
+    pdb = PDBFile(str(topology_path))
+    return Modeller(pdb.topology, pdb.positions)
+
+
 def build_system(
     modeller: Modeller, forcefield: ForceField, config: SimulationConfig
 ) -> openmm.System:
@@ -339,7 +344,15 @@ def main(
     checkpoint_path: Path,
 ) -> None:
     forcefield = ForceField(*config.force_field_files)
-    modeller = build_modeller(forcefield, config)
+    if restart:
+        if not config.topology_path.exists():
+            raise FileNotFoundError(
+                f"Topology file '{config.topology_path}' not found. "
+                "Cannot restart without saved topology."
+            )
+        modeller = load_existing_modeller(config.topology_path)
+    else:
+        modeller = build_modeller(forcefield, config)
     if not restart:
         write_topology(modeller, config)
 
