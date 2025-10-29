@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.so
+*.dylib
+*.DS_Store
+._*
+*.swp
+.fuse_hidden*
+md_log.txt
+traj.dcd
+traj_fixed.dcd
+top.pdb
+minimized.pdb
