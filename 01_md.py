@@ -54,6 +54,7 @@ class SimulationConfig:
     nonbonded_cutoff: unit.Quantity
     solvent_padding: unit.Quantity
     ionic_strength: unit.Quantity
+    hydrogen_mass: Optional[unit.Quantity]
     nvt_steps: int
     npt_steps: int
     production_steps: int
@@ -115,6 +116,11 @@ def load_config(path: Path) -> SimulationConfig:
         nonbonded_cutoff=system_cfg["nonbonded_cutoff"] * unit.nanometer,
         solvent_padding=system_cfg["solvent_padding"] * unit.nanometer,
         ionic_strength=system_cfg["ionic_strength"] * unit.molar,
+        hydrogen_mass=(
+            system_cfg.get("hydrogen_mass") * unit.amu
+            if "hydrogen_mass" in system_cfg
+            else None
+        ),
         nvt_steps=simulation_cfg["nvt_steps"],
         npt_steps=simulation_cfg["npt_steps"],
         production_steps=simulation_cfg["production_steps"],
@@ -220,13 +226,16 @@ def build_modeller(forcefield: ForceField, config: SimulationConfig) -> Modeller
 def build_system(
     modeller: Modeller, forcefield: ForceField, config: SimulationConfig
 ) -> openmm.System:
-    return forcefield.createSystem(
+    kwargs = dict(
         modeller.topology,
         nonbondedMethod=PME,
         nonbondedCutoff=config.nonbonded_cutoff,
         constraints=HBonds,
         removeCMMotion=True,
     )
+    if config.hydrogen_mass is not None:
+        kwargs["hydrogenMass"] = config.hydrogen_mass
+    return forcefield.createSystem(**kwargs)
 
 
 def build_simulation(

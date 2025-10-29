@@ -19,6 +19,7 @@ system:
   nonbonded_cutoff: 1.0
   solvent_padding: 1.0
   ionic_strength: 0.15
+  hydrogen_mass: 4.0
 
 simulation:
   nvt_steps: 50000 # 100 ps each if 0.002
