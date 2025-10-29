@@ -13,7 +13,7 @@ thermodynamics:
   temperature: 300
   pressure: 1
   friction_coefficient: 1.0
-  step_size: 0.004
+  step_size: 0.002
 
 system:
   nonbonded_cutoff: 1.0
@@ -21,9 +21,9 @@ system:
   ionic_strength: 0.15
 
 simulation:
-  nvt_steps: 25000 # 100 ps each
-  npt_steps: 25000
-  production_steps: 25000000 # 0.004×25,000,000 = 100 ns
+  nvt_steps: 50000 # 100 ps each if 0.002
+  npt_steps: 50000
+  production_steps: 50000000 # 0.002×25,000,000 = 100 ns
 
 reporting:
   dcd_interval: 5000

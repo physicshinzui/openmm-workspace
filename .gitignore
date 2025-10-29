@@ -11,3 +11,4 @@ traj.dcd
 traj_fixed.dcd
 top.pdb
 minimized.pdb
+out.dcd
