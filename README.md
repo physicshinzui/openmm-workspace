@@ -7,10 +7,11 @@ YAML でパラメータを管理し、エネルギー最小化 → NVT → NPT �
 - `01_md.py` — メインの MD 実行スクリプト。PyYAML で設定を読み込み、MDAnalysis の selection で位置拘束原子を指定できます。
 - `config.yaml` — 入力パラメータと入出力ファイルの指定。シミュレーションの段階やレポート間隔もここで管理します。
 - `requirements.txt` — 必須パッケージ一覧 (`openmm` を含む適切な環境に加えて `pyyaml`, `MDAnalysis` が必要)。
-- `02_analysis.py` — `md_log.txt` を読み込み、ステップ毎のポテンシャルエネルギー / 温度 / 体積をプロットする簡単な解析スクリプト。
+- `utils/monitor_basic_quantity.py` — `md_log.txt` を読み込み、時間軸 (ns) に変換した各種物理量（ポテンシャル/運動/全エネルギー、温度、密度、ns/day など）をまとめて可視化するスクリプト。
+- `utils/trjconv.py` — トラジェクトリ後処理のための補助スクリプト。
 - `1AKI.pdb` — 初期構造。
 - `top.pdb` / `minimized.pdb` / `traj.dcd` / `md_log.txt` — シミュレーション結果（それぞれトポロジー、エネルギー最小化後構造、軌跡、ログ）。
-- `traj_fixed.dcd`, `pbc.py`, `01_md_bk*.py` — 参考やバックアップ用の追加ファイル。
+- `traj_fixed.dcd`, `pbc.py` — 参考や補助用の追加ファイル。
 
 ## セットアップ
 1. 適切な Python 環境を用意し、OpenMM が動作することを確認します。
@@ -37,9 +38,9 @@ python 01_md.py --config config.yaml
 - `paths`  
   - `pdb` / `topology` / `minimized` / `trajectory` / `log`: 入出力ファイルパス。
 - `force_fields`: ForceField XML ファイル群。
-- `thermodynamics`: 温度、圧力、摩擦係数、タイムステップ。
-- `system`: 非結合カットオフ、ソルベントパディング、イオン濃度。
-- `simulation`: 各フェーズのステップ数 (`nvt_steps`, `npt_steps`, `production_steps`)。
+- `thermodynamics`: 温度、圧力、摩擦係数、タイムステップ。デフォルトでは 0.004 ps (=4 fs) のタイムステップを採用しており、HMR を前提とした値です。
+- `system`: 非結合カットオフ、ソルベントパディング、イオン濃度、`hydrogen_mass` による HMR 設定（例: 4.0 amu）。HMR を無効にする場合はこのキーを削除し、ステップサイズも適宜 0.002 ps に戻してください。
+- `simulation`: 各フェーズのステップ数 (`nvt_steps`, `npt_steps`, `production_steps`)。既定値では NVT/NPT が 100 ps、Production が 1 µs になります。
 - `reporting`: DCD 出力間隔、標準出力/ログへのレポート間隔。
 - `restraints`: 
   - `force_constant` — 位置拘束の力定数 (kJ/mol/nm²)。
@@ -49,16 +50,16 @@ python 01_md.py --config config.yaml
 - `top.pdb` — 初期構造を基に水・イオンを追加したトポロジー。
 - `minimized.pdb` — エネルギー最小化後の構造。
 - `traj.dcd` — Production まで含むトラジェクトリ。
-- `md_log.txt` — ステップ数、ポテンシャルエネルギー、温度、体積等を CSV 形式で記録。
+- `md_log.txt` — ステップ数・時間(ps)・各種エネルギー・温度・体積・密度・ns/day などを CSV 形式で記録。
 
 ## 解析
-`02_analysis.py` を使うと `md_log.txt` の内容を簡単に可視化できます。Matplotlib が必要です。
+`utils/monitor_basic_quantity.py` を使うと `md_log.txt` の内容を簡単に可視化できます。Matplotlib が必要です。
 ```bash
-python 02_analysis.py
+python utils/monitor_basic_quantity.py
 ```
 表示されるグラフで収束状況を確認してください。必要に応じてスクリプトを改造し、任意の物理量をプロットできます。
 
 ## 備考
 - `pbc.py` は周期境界条件関連の補助スクリプトです。
-- `01_md_bk.py`, `01_md_bk2.py` は旧バージョンのバックアップとして残しています。
 - 他のシステムで流用する際は、力場ファイルや溶媒条件を適宜差し替えてください。
+- 生成された `traj.dcd` や `md_log.txt` は `.gitignore` 済みで、そのままワークスペースに残せます。
