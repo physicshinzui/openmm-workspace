@@ -4,6 +4,7 @@ paths:
   minimized: minimized.pdb
   trajectory: traj.dcd
   log: md_log.txt
+  checkpoint: checkpoint.chk
 
 force_fields:
   - amber19/protein.ff19SB.xml

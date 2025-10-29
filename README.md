@@ -36,7 +36,7 @@ python 01_md.py --config config.yaml
 主なキーは次の通りです。
 
 - `paths`  
-  - `pdb` / `topology` / `minimized` / `trajectory` / `log`: 入出力ファイルパス。
+  - `pdb` / `topology` / `minimized` / `trajectory` / `log` / `checkpoint`: 入出力ファイルパス。
 - `force_fields`: ForceField XML ファイル群。
 - `thermodynamics`: 温度、圧力、摩擦係数、タイムステップ。デフォルトでは 0.004 ps (=4 fs) のタイムステップを採用しており、HMR を前提とした値です。
 - `system`: 非結合カットオフ、ソルベントパディング、イオン濃度、`hydrogen_mass` による HMR 設定（例: 4.0 amu）。HMR を無効にする場合はこのキーを削除し、ステップサイズも適宜 0.002 ps に戻してください。
@@ -51,6 +51,7 @@ python 01_md.py --config config.yaml
 - `minimized.pdb` — エネルギー最小化後の構造。
 - `traj.dcd` — Production まで含むトラジェクトリ。
 - `md_log.txt` — ステップ数・時間(ps)・各種エネルギー・温度・体積・密度・ns/day などを CSV 形式で記録。
+- `checkpoint.chk` — `CheckpointReporter` が書き出す最新のシミュレーション状態。ファイル名は `paths.checkpoint` で変更できます。
 
 ## 解析
 `utils/monitor_basic_quantity.py` を使うと `md_log.txt` の内容を簡単に可視化できます。Matplotlib が必要です。
@@ -63,3 +64,13 @@ python utils/monitor_basic_quantity.py
 - `pbc.py` は周期境界条件関連の補助スクリプトです。
 - 他のシステムで流用する際は、力場ファイルや溶媒条件を適宜差し替えてください。
 - 生成された `traj.dcd` や `md_log.txt` は `.gitignore` 済みで、そのままワークスペースに残せます。
+- `checkpoint.chk` などチェックポイントを保存しておけば `--restart` オプションで Production を再開できます。
+
+## リスタート (Checkpoint)
+
+シミュレーションを途中で止めた後に再開する場合は、`CheckpointReporter` が書き出すファイルを利用します。
+
+- `config.yaml` の `paths.checkpoint` で保存先を指定できます（デフォルトは `checkpoint.chk`）。
+- 実行時に `python 01_md.py --config config.yaml --restart` とすると、チェックポイントを読み込んで Production ステージだけを再開します。
+- 別のファイル名を使いたい場合は `--checkpoint custom.chk` のように CLI 引数で上書きできます。
+- チェックポイントは `config.reporting.log_interval` の頻度で更新されます。

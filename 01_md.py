@@ -14,6 +14,7 @@ from openmm.app import (
     ForceField,
     HBonds,
     Modeller,
+    CheckpointReporter,
     PME,
     PDBFile,
     Simulation,
@@ -46,6 +47,7 @@ class SimulationConfig:
     minimized_path: Path
     trajectory_path: Path
     log_path: Path
+    checkpoint_path: Path
     force_field_files: tuple[str, ...]
     temperature: unit.Quantity
     pressure: unit.Quantity
@@ -107,6 +109,7 @@ def load_config(path: Path) -> SimulationConfig:
         minimized_path=Path(paths["minimized"]),
         trajectory_path=Path(paths["trajectory"]),
         log_path=Path(paths["log"]),
+        checkpoint_path=Path(paths.get("checkpoint", "checkpoint.chk")),
         force_field_files=tuple(force_fields),
         temperature=thermodynamics["temperature"] * unit.kelvin,
         pressure=thermodynamics["pressure"] * unit.bar,
@@ -260,7 +263,11 @@ def write_minimized_structure(simulation: Simulation, path: Path) -> None:
         PDBFile.writeFile(simulation.topology, positions, handle)
 
 
-def attach_reporters(simulation: Simulation, config: SimulationConfig) -> None:
+def attach_reporters(
+    simulation: Simulation,
+    config: SimulationConfig,
+    checkpoint_path: Path,
+) -> None:
     simulation.reporters.extend(
         [
             DCDReporter(
@@ -295,6 +302,10 @@ def attach_reporters(simulation: Simulation, config: SimulationConfig) -> None:
                 density=True,
                 speed=True,
             ),
+            CheckpointReporter(
+                str(checkpoint_path),
+                config.log_interval,
+            ),
         ]
     )
 
@@ -322,14 +333,19 @@ def run_production(simulation: Simulation, steps: int) -> None:
     simulation.step(steps)
 
 
-def main(config: SimulationConfig) -> None:
+def main(
+    config: SimulationConfig,
+    restart: bool,
+    checkpoint_path: Path,
+) -> None:
     forcefield = ForceField(*config.force_field_files)
     modeller = build_modeller(forcefield, config)
-    write_topology(modeller, config)
+    if not restart:
+        write_topology(modeller, config)
 
     system = build_system(modeller, forcefield, config)
     restraint_index: Optional[int] = None
-    if config.position_restraints is not None:
+    if not restart and config.position_restraints is not None:
         restraint_indices = select_restraint_atoms(
             config.topology_path, config.position_restraints.selection
         )
@@ -342,7 +358,19 @@ def main(config: SimulationConfig) -> None:
         restraint_index = system.addForce(restraint_force)
 
     simulation = build_simulation(modeller, system, config)
-    attach_reporters(simulation, config)
+    attach_reporters(simulation, config, checkpoint_path)
+
+    if restart:
+        if not checkpoint_path.exists():
+            raise FileNotFoundError(
+                f"Checkpoint file '{checkpoint_path}' not found."
+            )
+        print(f"Loading checkpoint from {checkpoint_path}")
+        simulation.loadCheckpoint(str(checkpoint_path))
+        current_step = simulation.currentStep
+        print(f"Restarted at step {current_step}")
+        run_production(simulation, config.production_steps)
+        return
 
     print("Minimizing energy")
     simulation.minimizeEnergy()
@@ -369,6 +397,17 @@ if __name__ == "__main__":
         default=DEFAULT_CONFIG_PATH,
         help=f"Path to YAML configuration file (default: {DEFAULT_CONFIG_PATH})",
     )
+    parser.add_argument(
+        "--checkpoint",
+        type=Path,
+        help="Override checkpoint path (defaults to value from config).",
+    )
+    parser.add_argument(
+        "--restart",
+        action="store_true",
+        help="Resume from checkpoint and run production stage only.",
+    )
     args = parser.parse_args()
     simulation_config = load_config(args.config)
-    main(simulation_config)
+    checkpoint_path = args.checkpoint or simulation_config.checkpoint_path
+    main(simulation_config, args.restart, checkpoint_path)
