@@ -10,6 +10,10 @@ import numpy as np
 import yaml
 
 
+R_GAS_CONSTANT = 8.314462618  # J / (mol * K)
+BAR_NM3_TO_KJMOL = 0.06022140857  # (bar * nm^3) to kJ/mol conversion
+
+
 DEFAULT_LOG_PATH = Path("md_log.txt")
 DEFAULT_CONFIG_PATH = Path("config.yaml")
 
@@ -168,6 +172,86 @@ def compute_structural_metrics(
     plot_series(rg_time_ns, rg_values, f"Radius of gyration (Å) – {rg_selection}")
 
 
+def compute_enthalpy_series(
+    data: np.ndarray, pressure_bar: float
+) -> np.ndarray:
+    required_columns = {
+        "potential": 2,
+        "kinetic": 3,
+        "volume": 6,
+    }
+    for name, idx in required_columns.items():
+        if data.shape[1] <= idx:
+            raise ValueError(
+                f"Column '{name}' (index {idx}) not found in log data. "
+                "Ensure StateDataReporter includes potential, kinetic energy, and volume."
+            )
+    potential = data[:, required_columns["potential"]]
+    kinetic = data[:, required_columns["kinetic"]]
+    volume = data[:, required_columns["volume"]]
+    pv_term = pressure_bar * volume * BAR_NM3_TO_KJMOL
+    enthalpy = potential + kinetic + pv_term
+    return enthalpy
+
+
+def block_statistics(series: np.ndarray, block_size: Optional[int]) -> tuple[float, float, int]:
+    if block_size is None or block_size <= 1:
+        return series.mean(), series.var(ddof=1), series.size
+    blocks = series.size // block_size
+    if blocks < 2:
+        raise ValueError(
+            "Block size too large for available data; need at least two blocks."
+        )
+    trimmed = blocks * block_size
+    reshaped = series[:trimmed].reshape(blocks, block_size)
+    block_means = reshaped.mean(axis=1)
+    mean = block_means.mean()
+    variance = block_means.var(ddof=1) * block_size
+    return mean, variance, blocks
+
+
+def compute_heat_capacity(
+    data: np.ndarray,
+    pressure_bar: float,
+    temperature_kelvin: float,
+    block_size: Optional[int],
+) -> tuple[float, float]:
+    if temperature_kelvin <= 0:
+        raise ValueError("Temperature must be positive to compute heat capacity.")
+    enthalpy_kjmol = compute_enthalpy_series(data, pressure_bar)
+    enthalpy_jmol = enthalpy_kjmol * 1000.0
+    mean_enthalpy, variance_enthalpy, samples = block_statistics(
+        enthalpy_jmol, block_size
+    )
+    cp_jmolk = variance_enthalpy / (R_GAS_CONSTANT * temperature_kelvin ** 2)
+    cp_kjmolk = cp_jmolk / 1000.0
+    stderr = 0.0
+    if block_size and block_size > 1 and samples > 1:
+        stderr = cp_kjmolk * (2.0 / (samples - 1)) ** 0.5
+    return cp_kjmolk, stderr
+
+
+def running_heat_capacity(
+    data: np.ndarray, pressure_bar: float, temperature_kelvin: float
+) -> np.ndarray:
+    if temperature_kelvin <= 0:
+        raise ValueError("Temperature must be positive to compute heat capacity.")
+    enthalpy_kjmol = compute_enthalpy_series(data, pressure_bar)
+    enthalpy_jmol = enthalpy_kjmol * 1000.0
+    cp_series = np.full(enthalpy_jmol.shape, np.nan, dtype=float)
+    mean = 0.0
+    m2 = 0.0
+    for idx, value in enumerate(enthalpy_jmol, start=1):
+        delta = value - mean
+        mean += delta / idx
+        m2 += delta * (value - mean)
+        if idx >= 2:
+            variance = m2 / (idx - 1)
+            cp_jmolk = variance / (R_GAS_CONSTANT * temperature_kelvin ** 2)
+            cp_series[idx - 1] = cp_jmolk / 1000.0
+    return cp_series
+
+
 def main(
     log_path: Path,
     config_path: Path,
@@ -178,6 +262,7 @@ def main(
     rmsf_selection: str,
     rg_selection: str,
     override_dcd_interval: Optional[int],
+    block_size: Optional[int],
 ) -> None:
     config = load_config(config_path)
     step_size_ps = load_step_size_ps(config, config_path)
@@ -209,6 +294,31 @@ def main(
     for label, col in column_map:
         if data.shape[1] > col:
             plot_series(time_ns, data[:, col], label)
+
+    try:
+        thermodynamics_cfg = config["thermodynamics"]
+    except KeyError as exc:
+        raise KeyError(
+            f"'thermodynamics' section not found in config '{config_path}'."
+        ) from exc
+    try:
+        pressure_bar = float(thermodynamics_cfg["pressure"])
+        temperature_kelvin = float(thermodynamics_cfg["temperature"])
+    except KeyError as exc:
+        raise KeyError(
+            "Both 'pressure' and 'temperature' are required in the thermodynamics section "
+            f"of '{config_path}'. Missing key: {exc}"
+        ) from exc
+    cp_value, cp_std = compute_heat_capacity(
+        data, pressure_bar, temperature_kelvin, block_size
+    )
+    error_str = f" ± {cp_std:.4f}" if cp_std > 0 else ""
+    print(
+        f"Cp (isobaric heat capacity) ≈ {cp_value:.4f} kJ/mol/K{error_str} "
+        f"(T = {temperature_kelvin} K, p = {pressure_bar} bar)"
+    )
+    cp_running = running_heat_capacity(data, pressure_bar, temperature_kelvin)
+    plot_series(time_ns, cp_running, "Running Cp (kJ/mol/K)")
 
     topology_path = topology or paths.get("topology")
     trajectory_path = trajectory or paths.get("trajectory")
@@ -286,6 +396,11 @@ if __name__ == "__main__":
         type=int,
         help="Override the trajectory reporting interval used for time conversion.",
     )
+    parser.add_argument(
+        "--block-size",
+        type=int,
+        help="Block size (number of frames) for heat capacity error estimation.",
+    )
     args = parser.parse_args()
     main(
         args.log,
@@ -297,4 +412,5 @@ if __name__ == "__main__":
         args.selection_rmsf,
         args.selection_rg,
         args.dcd_interval,
+        args.block_size,
     )
