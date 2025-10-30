@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from math import ceil
 from pathlib import Path
 from sys import stdout
 from typing import Optional, Sequence
@@ -272,6 +273,7 @@ def attach_reporters(
     simulation: Simulation,
     config: SimulationConfig,
     checkpoint_path: Path,
+    restart: bool,
 ) -> None:
     simulation.reporters.extend(
         [
@@ -279,6 +281,7 @@ def attach_reporters(
                 str(config.trajectory_path),
                 config.dcd_interval,
                 enforcePeriodicBox=True,
+                append=restart,
             ),
             StateDataReporter(
                 stdout,
@@ -297,6 +300,7 @@ def attach_reporters(
                 str(config.log_path),
                 config.log_interval,
                 separator=",",
+                append=restart,
                 step=True,
                 time=True,
                 potentialEnergy=True,
@@ -338,10 +342,29 @@ def run_production(simulation: Simulation, steps: int) -> None:
     simulation.step(steps)
 
 
+def compute_production_steps(
+    config: SimulationConfig, until_ns: Optional[float]
+) -> int:
+    if until_ns is None:
+        return config.production_steps
+    if until_ns <= 0:
+        raise ValueError("--until must be positive.")
+    step_size_ps = config.step_size.value_in_unit(unit.picoseconds)
+    total_ps = until_ns * 1000.0
+    steps = ceil(total_ps / step_size_ps)
+    if steps <= 0:
+        raise ValueError(
+            "Computed production steps must be positive. "
+            "Check --until and step size settings."
+        )
+    return steps
+
+
 def main(
     config: SimulationConfig,
     restart: bool,
     checkpoint_path: Path,
+    until_ns: Optional[float],
 ) -> None:
     forcefield = ForceField(*config.force_field_files)
     if restart:
@@ -371,7 +394,8 @@ def main(
         restraint_index = system.addForce(restraint_force)
 
     simulation = build_simulation(modeller, system, config)
-    attach_reporters(simulation, config, checkpoint_path)
+    attach_reporters(simulation, config, checkpoint_path, restart)
+    target_production_steps = compute_production_steps(config, until_ns)
 
     if restart:
         if not checkpoint_path.exists():
@@ -382,7 +406,17 @@ def main(
         simulation.loadCheckpoint(str(checkpoint_path))
         current_step = simulation.currentStep
         print(f"Restarted at step {current_step}")
-        run_production(simulation, config.production_steps)
+        pre_production_steps = config.nvt_steps + config.npt_steps
+        completed_production_steps = max(current_step - pre_production_steps, 0)
+        remaining_steps = target_production_steps - completed_production_steps
+        if remaining_steps <= 0:
+            print(
+                "Target production time already reached. "
+                "No additional steps will be run."
+            )
+            return
+        print(f"Continuing production for {remaining_steps} steps")
+        run_production(simulation, remaining_steps)
         return
 
     print("Minimizing energy")
@@ -399,7 +433,8 @@ def main(
     if restraint_index is not None:
         system.removeForce(restraint_index)
         simulation.context.reinitialize(preserveState=True)
-    run_production(simulation, config.production_steps)
+    print(f"Production target: {target_production_steps} steps")
+    run_production(simulation, target_production_steps)
 
 
 if __name__ == "__main__":
@@ -420,7 +455,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Resume from checkpoint and run production stage only.",
     )
+    parser.add_argument(
+        "--until",
+        type=float,
+        help="Target production time in nanoseconds. Overrides production_steps.",
+    )
     args = parser.parse_args()
     simulation_config = load_config(args.config)
     checkpoint_path = args.checkpoint or simulation_config.checkpoint_path
-    main(simulation_config, args.restart, checkpoint_path)
+    main(simulation_config, args.restart, checkpoint_path, args.until)

@@ -7,7 +7,7 @@ YAML でパラメータを管理し、エネルギー最小化 → NVT → NPT �
 - `01_md.py` — メインの MD 実行スクリプト。PyYAML で設定を読み込み、MDAnalysis の selection で位置拘束原子を指定できます。
 - `config.yaml` — 入力パラメータと入出力ファイルの指定。シミュレーションの段階やレポート間隔もここで管理します。
 - `requirements.txt` — 必須パッケージ一覧 (`openmm` を含む適切な環境に加えて `pyyaml`, `MDAnalysis` が必要)。
-- `utils/monitor_basic_quantity.py` — `md_log.txt` を読み込み、時間軸 (ns) に変換した各種物理量（ポテンシャル/運動/全エネルギー、温度、密度、ns/day など）をまとめて可視化するスクリプト。
+- `utils/monitor_basic_quantity.py` — `md_log.txt` を読み込み、時間軸 (ns) に変換した各種物理量（ポテンシャル/運動/全エネルギー、温度、密度、ns/day など）をまとめて可視化し、さらに MDAnalysis を使って RMSD / RMSF / gyration 半径などの構造指標も算出するスクリプト。
 - `utils/trjconv.py` — トラジェクトリ後処理のための補助スクリプト。
 - `1AKI.pdb` — 初期構造。
 - `top.pdb` / `minimized.pdb` / `traj.dcd` / `md_log.txt` — シミュレーション結果（それぞれトポロジー、エネルギー最小化後構造、軌跡、ログ）。
@@ -54,10 +54,12 @@ python 01_md.py --config config.yaml
 - `checkpoint.chk` — `CheckpointReporter` が書き出す最新のシミュレーション状態。ファイル名は `paths.checkpoint` で変更できます。
 
 ## 解析
-`utils/monitor_basic_quantity.py` を使うと `md_log.txt` の内容を簡単に可視化できます。Matplotlib が必要です。
+`utils/monitor_basic_quantity.py` を使うと `md_log.txt` の内容と構造指標をまとめて可視化できます。Matplotlib と MDAnalysis が必要です。
 ```bash
 python utils/monitor_basic_quantity.py
 ```
+デフォルトでは `config.yaml` の設定を参照し、`protein and name CA` を基準に RMSD/RMSF を、`protein` を対象に gyration 半径を評価します。必要に応じて `--selection` / `--selection-rmsf` / `--selection-rg` 等で切り替えてください。
+例えば backbone 原子で RMSD を見たい場合は `python utils/monitor_basic_quantity.py --selection "backbone and not name H*"` のように指定できます。
 表示されるグラフで収束状況を確認してください。必要に応じてスクリプトを改造し、任意の物理量をプロットできます。
 
 ## 備考
@@ -73,5 +75,7 @@ python utils/monitor_basic_quantity.py
 - `config.yaml` の `paths.checkpoint` で保存先を指定できます（デフォルトは `checkpoint.chk`）。
 - 実行時に `python 01_md.py --config config.yaml --restart` とすると、チェックポイントを読み込んで Production ステージだけを再開します。
 - 別のファイル名を使いたい場合は `--checkpoint custom.chk` のように CLI 引数で上書きできます。
+- Production を ns 単位で指定したい場合は `--until 200` のように実行し、目標時間（ここでは約 200 ns）までステップを積みます。リスタート時はチェックポイントの進捗を考慮して残りのステップだけが走ります。
+- `--restart` で再開した場合、`traj.dcd` と `md_log.txt` への出力は既存ファイルに追記されるので、解析側で一続きのデータとして扱えます。
 - チェックポイントは `config.reporting.log_interval` の頻度で更新されます。
 - 再開時は `top.pdb`（`paths.topology`）が必要です。初回実行で自動生成されるので削除しないでください。
