@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import shutil
 from math import ceil
 from pathlib import Path
 from sys import stdout
@@ -44,6 +45,13 @@ class RestraintConfig:
 @dataclass(frozen=True)
 class SimulationConfig:
     pdb_path: Path
+    pdb_copy_path: Path
+    run_root: Path
+    run_dir: Path
+    initial_dir: Path
+    simulation_dir: Path
+    analysis_dir: Path
+    run_id: str
     topology_path: Path
     minimized_path: Path
     trajectory_path: Path
@@ -104,13 +112,60 @@ def load_config(path: Path) -> SimulationConfig:
             selection=selection,
         )
 
+    pdb_path = Path(paths["pdb"])
+    run_root = Path(paths.get("output_root", "data/md_runs"))
+    run_id = paths.get("run_id", "default")
+    run_dir = run_root / pdb_path.stem
+    initial_dir = run_dir / "initial"
+    simulation_dir = run_dir / "simulations" / run_id
+    analysis_dir = run_dir / "analysis"
+    pdb_copy_path = initial_dir / pdb_path.name
+
+    topology_path_raw = Path(paths["topology"])
+    topology_path = (
+        topology_path_raw
+        if topology_path_raw.is_absolute()
+        else initial_dir / topology_path_raw
+    )
+    minimized_path_raw = Path(paths["minimized"])
+    minimized_path = (
+        minimized_path_raw
+        if minimized_path_raw.is_absolute()
+        else simulation_dir / minimized_path_raw
+    )
+    trajectory_path_raw = Path(paths["trajectory"])
+    trajectory_path = (
+        trajectory_path_raw
+        if trajectory_path_raw.is_absolute()
+        else simulation_dir / trajectory_path_raw
+    )
+    log_path_raw = Path(paths["log"])
+    log_path = (
+        log_path_raw
+        if log_path_raw.is_absolute()
+        else simulation_dir / log_path_raw
+    )
+    checkpoint_path_raw = Path(paths.get("checkpoint", "checkpoint.chk"))
+    checkpoint_path = (
+        checkpoint_path_raw
+        if checkpoint_path_raw.is_absolute()
+        else simulation_dir / checkpoint_path_raw
+    )
+
     return SimulationConfig(
-        pdb_path=Path(paths["pdb"]),
-        topology_path=Path(paths["topology"]),
-        minimized_path=Path(paths["minimized"]),
-        trajectory_path=Path(paths["trajectory"]),
-        log_path=Path(paths["log"]),
-        checkpoint_path=Path(paths.get("checkpoint", "checkpoint.chk")),
+        pdb_path=pdb_path,
+        pdb_copy_path=pdb_copy_path,
+        run_root=run_root,
+        run_dir=run_dir,
+        initial_dir=initial_dir,
+        simulation_dir=simulation_dir,
+        analysis_dir=analysis_dir,
+        run_id=run_id,
+        topology_path=topology_path,
+        minimized_path=minimized_path,
+        trajectory_path=trajectory_path,
+        log_path=log_path,
+        checkpoint_path=checkpoint_path,
         force_field_files=tuple(force_fields),
         temperature=thermodynamics["temperature"] * unit.kelvin,
         pressure=thermodynamics["pressure"] * unit.bar,
@@ -366,6 +421,39 @@ def main(
     checkpoint_path: Path,
     until_ns: Optional[float],
 ) -> None:
+    required_dirs = {
+        config.run_root,
+        config.run_dir,
+        config.initial_dir,
+        config.simulation_dir,
+        config.analysis_dir,
+        config.topology_path.parent,
+        config.minimized_path.parent,
+        config.trajectory_path.parent,
+        config.log_path.parent,
+        checkpoint_path.parent,
+    }
+    for directory in required_dirs:
+        directory.mkdir(parents=True, exist_ok=True)
+
+    if not config.pdb_path.exists():
+        raise FileNotFoundError(
+            f"Initial structure file '{config.pdb_path}' not found."
+        )
+    copy_target = config.pdb_copy_path
+    same_location = copy_target == config.pdb_path
+    if not same_location and copy_target.exists():
+        try:
+            same_location = config.pdb_path.samefile(copy_target)
+        except FileNotFoundError:
+            same_location = False
+    if not same_location:
+        if (
+            not copy_target.exists()
+            or config.pdb_path.stat().st_mtime > copy_target.stat().st_mtime
+        ):
+            shutil.copy2(config.pdb_path, copy_target)
+
     forcefield = ForceField(*config.force_field_files)
     if restart:
         if not config.topology_path.exists():

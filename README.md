@@ -1,4 +1,4 @@
-# 01_hello_world
+# openmm workspace
 
 This directory provides a compact OpenMM example workflow.  
 Configuration lives in YAML, and the simulation follows the sequence energy minimisation → NVT → NPT → production. The repository contains the scripts needed to run the simulation and inspect the resulting data.

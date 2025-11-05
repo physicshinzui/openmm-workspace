@@ -1,0 +1,81 @@
+# Sequential runs for all dipeptide structures.
+# Launch with: python batch_md.py --workers 1
+- name: dipeptide-A
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/A.pdb
+  run_id: dipeptide_A
+
+- name: dipeptide-C
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/C.pdb
+  run_id: dipeptide_C
+
+- name: dipeptide-D
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/D.pdb
+  run_id: dipeptide_D
+
+- name: dipeptide-E
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/E.pdb
+  run_id: dipeptide_E
+
+- name: dipeptide-F
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/F.pdb
+  run_id: dipeptide_F
+
+- name: dipeptide-G
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/G.pdb
+  run_id: dipeptide_G
+
+- name: dipeptide-H
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/H.pdb
+  run_id: dipeptide_H
+
+- name: dipeptide-I
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/I.pdb
+  run_id: dipeptide_I
+
+- name: dipeptide-K
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/K.pdb
+  run_id: dipeptide_K
+
+- name: dipeptide-L
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/L.pdb
+  run_id: dipeptide_L
+
+- name: dipeptide-M
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/M.pdb
+  run_id: dipeptide_M
+
+- name: dipeptide-N
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/N.pdb
+  run_id: dipeptide_N
+
+- name: dipeptide-P
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/P.pdb
+  run_id: dipeptide_P
+
+- name: dipeptide-Q
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/Q.pdb
+  run_id: dipeptide_Q
+
+- name: dipeptide-R
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/R.pdb
+  run_id: dipeptide_R
+
+- name: dipeptide-S
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/S.pdb
+  run_id: dipeptide_S
+
+- name: dipeptide-T
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/T.pdb
+  run_id: dipeptide_T
+
+- name: dipeptide-V
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/V.pdb
+  run_id: dipeptide_V
+
+- name: dipeptide-W
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/W.pdb
+  run_id: dipeptide_W
+
+- name: dipeptide-Y
+  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/Y.pdb
+  run_id: dipeptide_Y

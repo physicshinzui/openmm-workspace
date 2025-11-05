@@ -14,3 +14,7 @@ minimized.pdb
 out.dcd
 checkpoint.chk
 *.chk
+analysis/
+openmm-*/
+data/
+generated_configs/
