@@ -144,5 +144,7 @@ dependencies:
   - zlib-ng=2.2.5
   - zstd=1.5.7
   - pip:
+      - openmmtools==0.25.3
+      - pymbar==3.1.1
       - pyyaml==6.0.3
 prefix: /home/siida/miniforge3/envs/openmm

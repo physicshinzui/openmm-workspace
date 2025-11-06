@@ -6,6 +6,7 @@ Configuration lives in YAML, and the simulation follows the sequence energy mini
 ## Contents
 - `01_md.py` — main MD driver. Loads parameters with PyYAML and supports selecting restrained atoms through MDAnalysis syntax.
 - `config.yaml` — central configuration for inputs, outputs, simulation phases, and reporting cadence.
+- `run_hrex.py` — launches Hamiltonian replica exchange (HREX) simulations using openmmtools.
 - `requirements.txt` — Python dependencies; in addition to a working OpenMM installation you need `pyyaml` and `MDAnalysis`.
 - `utils/monitor_basic_quantity.py` — analysis helper that plots quantities from `md_log.txt` on a nanosecond time axis, computes structural metrics (RMSD / RMSF / radius of gyration), and estimates the isobaric heat capacity (Cp) from log fluctuations.
 - `utils/trjconv.py` — basic trajectory post-processing utility.
@@ -14,10 +15,10 @@ Configuration lives in YAML, and the simulation follows the sequence energy mini
 - `traj_fixed.dcd`, `pbc.py` — additional helper files.
 
 ## Setup
-1. Prepare a Python environment where OpenMM is available.
-2. Install the remaining dependencies:
+1. Prepare a Python environment where OpenMM is available (see `environment.yml` for a conda recipe).
+2. Install the Python dependencies, including `openmmtools`/`pymbar`, for example with:
    ```bash
-   pip install -r requirements.txt
+   conda env update -f environment.yml
    ```
 
 ## Running the Simulation
@@ -86,3 +87,21 @@ Use the resulting figures to assess convergence and tailor the script for additi
 - When running with `--restart`, both `traj.dcd` and `md_log.txt` are opened in append mode so the data remain continuous.
 - The checkpoint is refreshed every `reporting.log_interval` steps.
 - Do not delete `top.pdb` (from `paths.topology`); it is required for restarts because it stores the solvated topology.
+
+## Hamiltonian Replica Exchange (HREX)
+- Configure an `hrex.<name>` block in `config.yaml` to define lambda/temperature schedules, MCMC settings, reporting cadence, and the alchemical selection. The default entry illustrates a protein-residue decoupling schedule with three replicas.
+- Generate the solvated topology first (e.g. by running `01_md.py` once) so that `paths.topology` exists for MDAnalysis selections.
+- Launch a new HREX run:
+  ```bash
+  python run_hrex.py --config config.yaml --hrex default
+  ```
+- Use `--overwrite` to replace an existing storage file, `--no-minimize` to skip the initial minimisation, and `--equil-iterations` / `--production-iterations` to override the iteration counts from the configuration.
+- Enable trajectory export by setting `hrex.reporting.position_interval` to a positive value (frames are stored every `position_interval` iterations). After the run completes, `run_hrex.py` writes one DCD per replica to `paths.hrex.trajectories` (default `data/hrex_runs/<name>/trajectories/`), using the interval and MD step size to define the time between frames.
+- Resume or extend an existing run (storage file `storage.nc` inside `paths.hrex.root`) with:
+  ```bash
+  python run_hrex.py --config config.yaml --hrex default --resume --production-iterations 50
+  ```
+- HREX data are written to the NetCDF storage file (`hrex.paths.storage`) and an auxiliary checkpoint file. `run_hrex.py` additionally writes:
+  - `hrex_log.csv` (per-iteration reduced potentials) in `paths.hrex.analysis`
+  - `hrex_summary.txt` (full text dump of state assignments, energies, and mixing statistics drawn from `storage.nc`)
+  Use these alongside the helpers in `hrex.analysis` to post-process acceptance statistics or MBAR free energies.

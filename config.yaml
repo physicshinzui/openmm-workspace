@@ -1,8 +1,5 @@
 paths:
-#  pdb: ../biomolecular_model_systems/proteins/bcl-xl/1maz_capped.pdb
-  #pdb: ../biomolecular_model_systems/proteins/proteinG_B1/1pgb.pdb
-  #pdb: ../biomolecular_model_systems/proteins/chignolin/chignolin_flat.pdb
-  #pdb: ../biomolecular_model_systems/peptides/small/diala.pdb #dipeptides/A.pdb #1AKI.pdb
+  pdb: ../biomolecular_model_systems/peptides/small/diala.pdb
   output_root: data/md_runs  # results stored in <output_root>/<pdb-name>/
   run_id: production         # subdirectory under simulations/
   topology: topology.pdb
@@ -42,3 +39,28 @@ restraints:
   # MDAnalysis selection string, e.g. "protein and not name H*"
   selection: "backbone"
   #selection: "name Na"
+
+hrex:
+  default:
+    paths:
+      root: data/hrex_runs/default
+    protocol:
+      lambda_schedule: [1.0, 0.85]
+      barostat_frequency: 50
+    mcmc:
+      timestep: 0.004
+      collision_rate: 1.0
+      n_steps_per_iteration: 500
+      splitting: "V R O R V"
+    iterations:
+      equilibration_iterations: 20
+      production_iterations: 100
+      checkpoint_interval: 10
+    reporting:
+      position_interval: 1
+      velocity_interval: 0
+      analysis_particles: []
+    alchemical_region:
+      selection: "protein and resid 1"
+      annihilate_electrostatics: true
+      annihilate_sterics: true
