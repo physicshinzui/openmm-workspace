@@ -15,7 +15,8 @@ out.dcd
 checkpoint.chk
 *.chk
 analysis/
-openmm-*/
+openmm-8.3.1/
 openmmtools-0.25.3/
+deeptime-0.4.5/
 data/
 generated_configs/
