@@ -16,5 +16,6 @@ checkpoint.chk
 *.chk
 analysis/
 openmm-*/
+openmmtools-0.25.3/
 data/
 generated_configs/
