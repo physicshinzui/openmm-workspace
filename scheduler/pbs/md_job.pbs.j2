@@ -1,0 +1,17 @@
+#!/bin/bash
+#PBS -N {job_name}
+{queue_directive}{account_directive}{resource_directive}{walltime_directive}{array_directive}#PBS -o {stdout_path}
+#PBS -e {stderr_path}
+#PBS -j oe
+
+set -euo pipefail
+
+echo "[${{HOSTNAME}}] $(date --iso-8601=seconds) starting job {job_name}"
+echo "Working directory: {workdir}"
+
+cd {workdir}
+
+{module_lines}{pre_command_lines}{env_lines}echo "[$(date --iso-8601=seconds)] launching: {command}"
+{command}
+
+echo "[$(date --iso-8601=seconds)] job {job_name} finished"

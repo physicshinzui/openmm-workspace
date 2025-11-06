@@ -1,8 +1,5 @@
 paths:
-#  pdb: ../biomolecular_model_systems/proteins/bcl-xl/1maz_capped.pdb
-  #pdb: ../biomolecular_model_systems/proteins/proteinG_B1/1pgb.pdb
-  #pdb: ../biomolecular_model_systems/proteins/chignolin/chignolin_flat.pdb
-  #pdb: ../biomolecular_model_systems/peptides/small/diala.pdb #dipeptides/A.pdb #1AKI.pdb
+  pdb: ../biomolecular_model_systems/peptides/small/diala.pdb
   output_root: data/md_runs  # results stored in <output_root>/<pdb-name>/
   run_id: production         # subdirectory under simulations/
   topology: topology.pdb
@@ -10,6 +7,13 @@ paths:
   trajectory: traj.dcd
   log: md_log.txt
   checkpoint: checkpoint.chk
+
+replicas:
+  count: 4                 # number of independent replicas (set to 1 for single run)
+  directory_pattern: "replica_{replica_id:03d}"
+  seed_start: 1000         # first replica seed; seeds increment by seed_stride
+  seed_stride: 1
+  metadata_filename: metadata.json
 
 force_fields:
   - amber19/protein.ff19SB.xml
@@ -30,7 +34,8 @@ system:
 simulation:
   nvt_steps: 25000         # 25,000 × 0.004 ps = 100 ps
   npt_steps: 25000         # 25,000 × 0.004 ps = 100 ps
-  production_steps: 250000000  # 250,000,000 × 0.004 ps = 1,000,000 ps = 1 µs
+  production_steps: 25000
+  #production_steps: 250000000  # 250,000,000 × 0.004 ps = 1,000,000 ps = 1 µs
 
 reporting:
   dcd_interval: 25000
@@ -42,3 +47,27 @@ restraints:
   # MDAnalysis selection string, e.g. "protein and not name H*"
   selection: "backbone"
   #selection: "name Na"
+
+scheduler:
+  template: scheduler/pbs/md_job.pbs.j2
+  queue: gpu
+  walltime: "24:00:00"
+  account: null
+  submit_command: qsub
+  submit_flags: []
+  resources:
+    nodes: 1
+    ppn: 16
+    gpus: 1
+  array:
+    enabled: false
+    chunk_size: 1
+  environment:
+    modules:
+      - "module purge"
+      - "module load cuda/12.2"
+    pre_commands:
+      - "source ~/miniconda3/etc/profile.d/conda.sh"
+      - "conda activate openmm"
+  python_exe: python
+  additional_flags: []      # extra CLI flags forwarded to 01_md.py
