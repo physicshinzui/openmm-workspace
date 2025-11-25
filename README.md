@@ -9,6 +9,9 @@ This repository contains a compact yet extensible OpenMM workflow that covers pr
 - `analysis/collect_runs.py` — scans metadata JSON files and produces a manifest of completed replicas.
 - `analysis/featurize.py` — loads the run manifest, computes MSM-friendly features (backbone dihedrals or CA distances), and records a feature manifest.
 - `analysis/build_msm.py` — consumes the feature manifest and builds a deeptime MSM (TICA → clustering → MSM) with optional embeddings.
+- `analysis/run_pipeline.py` — convenience wrapper that chains the above three steps (collect → featurise → MSM).
+- `analysis/plot_msm.py` — optional plotting tool (implied timescales, TICA scatter, CK test) for MSM results.
+- `analysis/inspect_msm.py` — CLI utility to print stationary distributions, MFPTs, and optional PCCA+ memberships.
 - `utils/monitor_basic_quantity.py` / `utils/trjconv.py` — legacy analysis helpers for quick trajectory inspection.
 - `scheduler/pbs/md_job.pbs.j2` — PBS template rendered by `batch_md.py --mode pbs`.
 
@@ -94,6 +97,43 @@ Launches replicas directly via `subprocess` (respecting environment overrides).
      --verbose
    ```
    Stores fitted models (`models/*.pkl`), implied timescales (`timescales.csv`), optional trajectory embeddings, and a `summary.json` with provenance.
+
+### One-shot Pipeline
+The helper script below strings the three stages together; customise arguments as needed:
+```bash
+python analysis/run_pipeline.py \
+  --config config.yaml \
+  --run-manifest data/manifests/protein_runs.csv \
+  --feature-dir data/features/protein \
+  --msm-dir data/msm/protein \
+  --feature-set backbone-dihedrals \
+  --lag-time 50 \
+  --stride 10 \
+  --reversible \
+  --save-embeddings \
+  --verbose
+```
+
+### Visualization
+Use the plotting helper to generate diagnostics once the MSM has been built:
+```bash
+python analysis/plot_msm.py \
+  --msm-dir data/msm/protein \
+  --embeddings-manifest data/msm/protein/embedding_manifest.csv \
+  --pair 0 1 \
+  --ck-lags 1 2 4 \
+  --verbose
+```
+This writes PNGs (timescales, TICA scatter, optional CK test) into `data/msm/protein/figures/`.
+
+### Inspect MSM Numerically
+To print stationary populations, MFPT matrices, and optionally PCCA+ memberships (with CSV export), run:
+```bash
+python analysis/inspect_msm.py \
+  --msm-dir data/msm/protein \
+  --macro-states 3 \
+  --output-csv
+```
 
 ## Legacy Analysis Helpers
 `utils/monitor_basic_quantity.py` still provides quick-look plots (RMSD, RMSF, radius of gyration, Cp) from `md_log.txt`. Invoke as:

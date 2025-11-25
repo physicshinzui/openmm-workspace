@@ -38,9 +38,9 @@ simulation:
   #production_steps: 250000000  # 250,000,000 × 0.004 ps = 1,000,000 ps = 1 µs
 
 reporting:
-  dcd_interval: 25000
-  stdout_interval: 5000
-  log_interval: 5000
+  dcd_interval: 25 #25000
+  stdout_interval: 25 #5000
+  log_interval: 25 # 5000
 
 restraints:
   force_constant: 0.0 #1000
