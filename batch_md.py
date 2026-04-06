@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import argparse
+<<<<<<< HEAD
 import copy
 import csv
 import os
 import re
 import shlex
 import subprocess
+=======
+>>>>>>> bd32642 (Refactor MD workflow into config-first modules and remove analysis code)
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
 from pathlib import Path
+<<<<<<< HEAD
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 """
@@ -73,6 +75,16 @@ class JobBundle:
     env: Dict[str, str]
     jobs: List[PreparedJob]
     meta: Dict[str, Any]
+=======
+
+from batch_jobs import (
+    DEFAULT_GENERATED_DIR,
+    DEFAULT_JOBS_PATH,
+    DEFAULT_MD_SCRIPT,
+    run_batch_jobs,
+)
+from md_config import DEFAULT_CONFIG_PATH
+>>>>>>> bd32642 (Refactor MD workflow into config-first modules and remove analysis code)
 
 
 def parse_args() -> argparse.Namespace:
@@ -164,6 +176,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+<<<<<<< HEAD
 def load_yaml(path: Path) -> Any:
     try:
         with path.open() as handle:
@@ -719,6 +732,19 @@ def main() -> None:
         else (args.generated_config_dir / "jobs_manifest.csv")
     )
     write_manifest(bundles, manifest_path, args.mode, script_map)
+=======
+def main() -> None:
+    args = parse_args()
+    run_batch_jobs(
+        jobs_path=args.jobs,
+        default_config_path=args.default_config,
+        generated_config_dir=args.generated_config_dir,
+        md_script=args.md_script,
+        python_executable=args.python,
+        workers=args.workers,
+        dry_run=args.dry_run,
+    )
+>>>>>>> bd32642 (Refactor MD workflow into config-first modules and remove analysis code)
 
 
 if __name__ == "__main__":

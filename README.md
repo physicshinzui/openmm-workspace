@@ -1,5 +1,6 @@
 # openmm workspace
 
+<<<<<<< HEAD
 This repository contains a compact yet extensible OpenMM workflow that covers preparation, replica production, and Markov state model (MSM) analysis. Configuration lives in YAML, simulations are reproducible through metadata sidecars, and helper scripts streamline running large batches on PBS-like schedulers and post-processing the resulting trajectories.
 
 ## Repository Layout
@@ -18,9 +19,29 @@ This repository contains a compact yet extensible OpenMM workflow that covers pr
 ## Environment Setup
 1. Install OpenMM (CPU or GPU build).
 2. Install Python dependencies:
+=======
+This directory provides a compact OpenMM workflow for energy minimisation, NVT, NPT, and production MD.
+The repository is now **config-first**: simulation parameters, file locations, reporting intervals, and restraint settings are managed in YAML.
+
+## Contents
+- `01_md.py` — thin CLI entry point for a single MD run.
+- `md_config.py` — shared config models, YAML loading, validation, and path resolution.
+- `md_workflow.py` — OpenMM workflow implementation for minimisation, equilibration, production, and restart handling.
+- `batch_md.py` — thin CLI entry point for batch execution.
+- `batch_jobs.py` — batch job schema, config generation, and subprocess execution logic.
+- `config.yaml` — central configuration for inputs, outputs, simulation phases, and reporting cadence.
+- `jobs.yaml` — list of structures and run IDs for batch execution.
+- `environment.yml` — conda environment specification for the MD workflow.
+- `1aki/1AKI.pdb` — sample starting structure.
+
+## Setup
+1. Create the conda environment:
+>>>>>>> bd32642 (Refactor MD workflow into config-first modules and remove analysis code)
    ```bash
-   pip install -r requirements.txt
+   conda env create -f environment.yml
+   conda activate openmm
    ```
+<<<<<<< HEAD
    For MSM analysis you additionally need `mdtraj` and `deeptime` (see `environment.yml` for a conda example).
 
 ## Single-Run Execution
@@ -33,9 +54,31 @@ Key CLI options:
 - `--seed` — explicit random seed (otherwise derived from `replicas.seed_start`).
 - `--stage production` — continue from checkpoint only (requires `--restart`).
 - `--until <ns>` — cap production time in nanoseconds.
+=======
+2. Set `paths.pdb` in `config.yaml`, or use `jobs.yaml` to inject per-job input structures.
+
+## Running a single simulation
+```bash
+python 01_md.py --config config.yaml
+```
+
+CLI flags are intentionally limited to run control:
+- `--config` — choose the YAML config file.
+- `--restart` — resume production from a checkpoint.
+- `--checkpoint` — override the configured checkpoint path.
+- `--until` — override the configured production horizon in nanoseconds.
+
+Pipeline summary:
+1. Read the input PDB, remove waters, add hydrogens, solvate, and ionise.
+2. Minimise energy and write the structure to `paths.minimized`.
+3. Run NVT and NPT while positional restraints are active for the configured selection.
+4. Remove restraints and continue with the production phase.
+5. Emit `traj.dcd` and `md_log.txt` at the configured intervals.
+>>>>>>> bd32642 (Refactor MD workflow into config-first modules and remove analysis code)
 
 Outputs are written beneath `paths.output_root/<pdb-stem>/` with replica-specific subdirectories such as `simulations/<run_id>/replica_000/`. Each run produces `metadata.json` capturing the CLI parameters, seeds, step counts, and paths to artefacts (trajectory, log, checkpoint, topology). These metadata files drive the downstream collection scripts.
 
+<<<<<<< HEAD
 ## Replica & Scheduler Configuration (`config.yaml`)
 - `paths` — input/output files (relative paths resolve under `paths.output_root`).
 - `replicas` — controls replica bookkeeping; adjust `count`, `directory_pattern`, seeds, and metadata filename.
@@ -146,3 +189,48 @@ python utils/monitor_basic_quantity.py --selection "backbone and not name H*"
 - Adjust `scheduler.environment.modules` and `pre_commands` to match your cluster’s module system or conda bootstrap.
 - Prefer `--dry-run` when regenerating PBS scripts to verify template substitutions without touching the queue.
 - For heterogeneous frame spacing ensure each replica uses the same `dcd_interval` and stride; `build_msm.py` currently assumes a consistent frame timestep across trajectories.
+=======
+- `paths`
+  - `pdb` / `output_root` / `run_id` / `topology` / `minimized` / `trajectory` / `log` / `checkpoint`
+- `force_fields`
+- `thermodynamics`
+  - temperature, pressure, friction coefficient, and integrator step size
+- `system`
+  - non-bonded cutoff, solvent padding, ionic strength, and optional `hydrogen_mass`
+- `simulation`
+  - step counts for NVT, NPT, and production
+- `reporting`
+  - DCD, stdout, and log intervals
+- `restraints`
+  - positional restraint force constant and MDAnalysis selection string
+
+## Outputs
+- `topology.pdb` — solvated topology written after the modeller stage
+- `minimized.pdb` — structure after minimisation
+- `traj.dcd` — trajectory covering all simulation stages
+- `md_log.txt` — CSV log containing step, time (ps), energies, temperature, volume, density, and performance (ns/day)
+- `checkpoint.chk` — latest restart state written by `CheckpointReporter`
+
+## Batch execution
+Batch runs are driven by `jobs.yaml`.
+
+```bash
+python batch_md.py --jobs jobs.yaml --workers 1
+```
+
+For each job, the batch runner:
+1. Loads a base `config.yaml`.
+2. Overrides `paths.pdb`, `paths.run_id`, and any job-specific path settings.
+3. Writes a generated config into `generated_configs/`.
+4. Launches `01_md.py --config <generated-config>` in a subprocess.
+
+## Restarting from a checkpoint
+- Configure the checkpoint path via `paths.checkpoint` (default `checkpoint.chk`).
+- Resume production with:
+  ```bash
+  python 01_md.py --config config.yaml --restart
+  ```
+- Override the checkpoint path on the command line with `--checkpoint custom.chk`.
+- Target a specific production horizon in nanoseconds with `--until`.
+- Keep `topology.pdb`; it is required for restart because it stores the solvated topology.
+>>>>>>> bd32642 (Refactor MD workflow into config-first modules and remove analysis code)

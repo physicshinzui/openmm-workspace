@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import argparse
+<<<<<<< HEAD
 from dataclasses import dataclass, replace
 import shutil
 import json
 import os
 import random
 from math import ceil
+=======
+>>>>>>> bd32642 (Refactor MD workflow into config-first modules and remove analysis code)
 from pathlib import Path
-from sys import stdout
-from typing import Optional, Sequence
 
+<<<<<<< HEAD
 from datetime import datetime, timezone
 
 import numpy as np
@@ -767,6 +769,12 @@ def main(
 
 
 if __name__ == "__main__":
+=======
+from md_config import DEFAULT_CONFIG_PATH, load_simulation_config, resolve_runtime_path
+
+
+def parse_args() -> argparse.Namespace:
+>>>>>>> bd32642 (Refactor MD workflow into config-first modules and remove analysis code)
     parser = argparse.ArgumentParser(description="Run OpenMM MD simulation.")
     parser.add_argument(
         "--config",
@@ -789,6 +797,7 @@ if __name__ == "__main__":
         type=float,
         help="Target production time in nanoseconds. Overrides production_steps.",
     )
+<<<<<<< HEAD
     parser.add_argument(
         "--replica-id",
         type=int,
@@ -817,3 +826,29 @@ if __name__ == "__main__":
         args.seed,
         args.stage,
     )
+=======
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    simulation_config = load_simulation_config(args.config)
+    checkpoint_path = (
+        resolve_runtime_path(args.checkpoint)
+        if args.checkpoint is not None
+        else simulation_config.paths.checkpoint_path
+    )
+
+    from md_workflow import run_simulation
+
+    run_simulation(
+        simulation_config,
+        restart=args.restart,
+        checkpoint_path=checkpoint_path,
+        until_ns=args.until,
+    )
+
+
+if __name__ == "__main__":
+    main()
+>>>>>>> bd32642 (Refactor MD workflow into config-first modules and remove analysis code)

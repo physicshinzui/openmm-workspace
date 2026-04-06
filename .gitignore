@@ -14,8 +14,12 @@ minimized.pdb
 out.dcd
 checkpoint.chk
 *.chk
+<<<<<<< HEAD
 analysis/
 openmm-8.3.1/
+=======
+openmm-*/
+>>>>>>> bd32642 (Refactor MD workflow into config-first modules and remove analysis code)
 openmmtools-0.25.3/
 deeptime-0.4.5/
 data/
