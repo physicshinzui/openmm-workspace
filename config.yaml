@@ -1,10 +1,7 @@
 paths:
-#  pdb: ../biomolecular_model_systems/proteins/bcl-xl/1maz_capped.pdb
-  #pdb: ../biomolecular_model_systems/proteins/proteinG_B1/1pgb.pdb
-  #pdb: ../biomolecular_model_systems/proteins/chignolin/chignolin_flat.pdb
-  #pdb: ../biomolecular_model_systems/peptides/small/diala.pdb #dipeptides/A.pdb #1AKI.pdb
-  output_root: data/md_runs  # results stored in <output_root>/<pdb-name>/
-  run_id: production         # subdirectory under simulations/
+  pdb: 1aki/1AKI.pdb
+  output_root: data/md_runs
+  run_id: production
   topology: topology.pdb
   minimized: minimized.pdb
   trajectory: traj.dcd
@@ -19,7 +16,7 @@ thermodynamics:
   temperature: 300
   pressure: 1
   friction_coefficient: 1.0
-  step_size: 0.004  # 4 fs with HMR
+  step_size: 0.004  # ps; 4 fs with HMR
 
 system:
   nonbonded_cutoff: 1.0
@@ -28,17 +25,15 @@ system:
   hydrogen_mass: 4.0
 
 simulation:
-  nvt_steps: 25000         # 25,000 × 0.004 ps = 100 ps
-  npt_steps: 25000         # 25,000 × 0.004 ps = 100 ps
-  production_steps: 250000000  # 250,000,000 × 0.004 ps = 1,000,000 ps = 1 µs
+  nvt_steps: 25000
+  npt_steps: 25000
+  production_steps: 25000
 
 reporting:
-  dcd_interval: 25000
-  stdout_interval: 5000
-  log_interval: 5000
+  dcd_interval: 25
+  stdout_interval: 25
+  log_interval: 25
 
 restraints:
-  force_constant: 0.0 #1000
-  # MDAnalysis selection string, e.g. "protein and not name H*"
+  force_constant: 0.0
   selection: "backbone"
-  #selection: "name Na"
