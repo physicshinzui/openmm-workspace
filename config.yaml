@@ -1,6 +1,6 @@
 paths:
   pdb: 1aki/1AKI.pdb
-  output_root: data/md_runs
+  output_root: data
   run_id: production
   topology: topology.pdb
   minimized: minimized.pdb
@@ -25,9 +25,9 @@ system:
   hydrogen_mass: 4.0
 
 simulation:
-  nvt_steps: 25000
-  npt_steps: 25000
-  production_steps: 25000
+  nvt_steps: 2500
+  npt_steps: 2500
+  production_steps: 2500
 
 reporting:
   dcd_interval: 25
@@ -35,5 +35,5 @@ reporting:
   log_interval: 25
 
 restraints:
-  force_constant: 0.0
+  force_constant: 1000.0
   selection: "backbone"

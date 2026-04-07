@@ -1,6 +1,6 @@
 paths:
-  pdb: 1aki/1AKI.pdb
-  output_root: data
+  pdb: inputs/ace-AA-nme.pdb
+  output_root: data/
   run_id: production
   topology: topology.pdb
   minimized: minimized.pdb
@@ -16,7 +16,7 @@ thermodynamics:
   temperature: 300
   pressure: 1
   friction_coefficient: 1.0
-  step_size: 0.004  # 4 fs with HMR
+  step_size: 0.004  # ps; 4 fs with HMR
 
 system:
   nonbonded_cutoff: 1.0
@@ -25,15 +25,15 @@ system:
   hydrogen_mass: 4.0
 
 simulation:
-  nvt_steps: 2500         # 25,000 × 0.004 ps = 100 ps
-  npt_steps: 2500         # 25,000 × 0.004 ps = 100 ps
-  production_steps: 2500  # 250,000,000 × 0.004 ps = 1,000,000 ps = 1 µs
+  nvt_steps: 25000 # 100ps
+  npt_steps: 25000
+  production_steps: 25000
 
 reporting:
-  dcd_interval: 250
-  stdout_interval: 250
-  log_interval: 250
+  dcd_interval: 25 # 2500 => 10 ps
+  stdout_interval: 25
+  log_interval: 25
 
 restraints:
-  force_constant: 1000
+  force_constant: 1000.0
   selection: "backbone"

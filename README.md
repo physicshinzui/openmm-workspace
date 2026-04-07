@@ -138,6 +138,7 @@ If the `restraints` section is present, both fields must be set. A zero force co
 - `traj.dcd` — trajectory across all simulation stages
 - `md_log.txt` — CSV state-data log
 - `checkpoint.chk` — restart file
+- `run_info.txt` — runtime information such as the OpenMM platform (`CUDA`, `OpenCL`, `CPU`)
 
 ## Restarting
 

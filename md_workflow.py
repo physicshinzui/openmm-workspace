@@ -144,6 +144,27 @@ def build_simulation(
     return simulation
 
 
+def log_platform_info(
+    simulation: Simulation, config: SimulationConfig, restart: bool
+) -> None:
+    platform = simulation.context.getPlatform()
+    platform_name = platform.getName()
+    properties = platform.getPropertyNames()
+    details = ", ".join(
+        f"{name}={platform.getPropertyValue(simulation.context, name)}"
+        for name in properties
+    )
+    message = f"Platform: {platform_name}"
+    if details:
+        message = f"{message} ({details})"
+
+    print(message)
+    mode = "a" if restart else "w"
+    info_path = config.paths.simulation_dir / "run_info.txt"
+    with info_path.open(mode) as handle:
+        handle.write(f"{message}\n")
+
+
 def write_topology(modeller: Modeller, path: Path) -> None:
     with path.open("w") as handle:
         PDBFile.writeFile(modeller.topology, modeller.positions, handle)
@@ -386,6 +407,7 @@ def run_simulation(
     restraint_index = maybe_add_restraints(system, modeller, config, restart)
 
     simulation = build_simulation(modeller, system, config)
+    log_platform_info(simulation, config, restart)
     attach_reporters(simulation, config, effective_checkpoint, restart)
     target_production_steps = compute_target_production_steps(config, until_ns)
 
