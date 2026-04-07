@@ -45,6 +45,20 @@ python batch_md.py --jobs jobs.yaml --workers 1
 
 Each job inherits a base config, overrides path-level fields such as `paths.pdb` and `paths.run_id`, writes a generated config into `generated_configs/`, then launches `01_md.py` with that generated config.
 
+## Post-processing a trajectory with MDTraj
+
+To reimage a trajectory into the periodic box and center it after the run:
+
+```bash
+python center_trajectory.py \
+  --trajectory data/ace-AA-nme/simulations/production/traj.dcd \
+  --topology data/ace-AA-nme/simulations/production/minimized.pdb \
+  --output data/ace-AA-nme/simulations/production/traj_centered.dcd \
+  --output-pdb data/ace-AA-nme/simulations/production/traj_centered_first_frame.pdb
+```
+
+By default the script tries to use the MDTraj selection `protein` as the anchor molecule for imaging. If that selection matches no atoms, it falls back to MDTraj's default molecule-based imaging.
+
 ## `config.yaml` schema
 
 ### `paths`
