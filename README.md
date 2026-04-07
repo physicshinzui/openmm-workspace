@@ -51,10 +51,10 @@ To reimage a trajectory into the periodic box and center it after the run:
 
 ```bash
 python center_trajectory.py \
-  --trajectory data/ace-AA-nme/simulations/production/traj.dcd \
-  --topology data/ace-AA-nme/simulations/production/minimized.pdb \
-  --output data/ace-AA-nme/simulations/production/traj_centered.dcd \
-  --output-pdb data/ace-AA-nme/simulations/production/traj_centered_first_frame.pdb
+  --trajectory traj.dcd \
+  --topology minimized.pdb \
+  --output traj_centered.dcd \
+  --output-pdb traj_centered_first_frame.pdb
 ```
 
 By default the script tries to use the MDTraj selection `protein` as the anchor molecule for imaging. If that selection matches no atoms, it falls back to MDTraj's default molecule-based imaging.
