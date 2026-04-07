@@ -32,7 +32,7 @@ def create_position_restraint_force(
 ) -> openmm.CustomExternalForce:
     """Build a harmonic position restraint force for a subset of atoms."""
 
-    energy = "0.5 * k * ((x-x0)^2 + (y-y0)^2 + (z-z0)^2)"
+    energy = "0.5 * k * periodicdistance(x, y, z, x0, y0, z0)^2"
     restraint = openmm.CustomExternalForce(energy)
     restraint.addPerParticleParameter("k")
     restraint.addPerParticleParameter("x0")
