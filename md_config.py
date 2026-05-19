@@ -55,7 +55,7 @@ class ThermodynamicsConfig:
 @dataclass(frozen=True)
 class SystemConfig:
     nonbonded_cutoff_nm: float
-    solvent_padding_nm: float
+    solvent_padding_nm: Optional[float]
     ionic_strength_molar: float
     hydrogen_mass_amu: Optional[float]
 
@@ -242,10 +242,18 @@ def load_simulation_config(
                 "system.nonbonded_cutoff",
                 config_path,
             ),
-            solvent_padding_nm=_require_positive_float(
-                system_cfg.get("solvent_padding"),
-                "system.solvent_padding",
-                config_path,
+            solvent_padding_nm=(
+                _require_positive_float(
+                    system_cfg.get("solvent_padding"),
+                    "system.solvent_padding",
+                    config_path,
+                )
+                if input_format == "pdb"
+                else _optional_positive_float(
+                    system_cfg.get("solvent_padding"),
+                    "system.solvent_padding",
+                    config_path,
+                )
             ),
             ionic_strength_molar=_require_non_negative_float(
                 system_cfg.get("ionic_strength"),

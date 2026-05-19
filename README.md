@@ -114,9 +114,11 @@ By default the script tries to use the MDTraj selection `protein` as the anchor 
 | Key | Type | Units | Required | Meaning |
 | --- | --- | --- | --- | --- |
 | `nonbonded_cutoff` | number | nm | yes | Nonbonded cutoff |
-| `solvent_padding` | number | nm | yes | Solvent box padding |
+| `solvent_padding` | number | nm | PDB only | Solvent box padding |
 | `ionic_strength` | number | molar | yes | Salt concentration |
 | `hydrogen_mass` | number | amu | no | Hydrogen mass repartitioning target |
+
+`solvent_padding` is used only when building a new solvent box from PDB input. It is ignored for Amber `prmtop`/`inpcrd` input.
 
 ### `simulation`
 
