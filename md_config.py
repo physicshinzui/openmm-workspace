@@ -56,7 +56,7 @@ class ThermodynamicsConfig:
 class SystemConfig:
     nonbonded_cutoff_nm: float
     solvent_padding_nm: Optional[float]
-    ionic_strength_molar: float
+    ionic_strength_molar: Optional[float]
     hydrogen_mass_amu: Optional[float]
 
 
@@ -255,10 +255,18 @@ def load_simulation_config(
                     config_path,
                 )
             ),
-            ionic_strength_molar=_require_non_negative_float(
-                system_cfg.get("ionic_strength"),
-                "system.ionic_strength",
-                config_path,
+            ionic_strength_molar=(
+                _require_non_negative_float(
+                    system_cfg.get("ionic_strength"),
+                    "system.ionic_strength",
+                    config_path,
+                )
+                if input_format == "pdb"
+                else _optional_positive_float(
+                    system_cfg.get("ionic_strength"),
+                    "system.ionic_strength",
+                    config_path,
+                )
             ),
             hydrogen_mass_amu=_optional_positive_float(
                 system_cfg.get("hydrogen_mass"),
