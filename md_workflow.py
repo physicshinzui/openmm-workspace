@@ -323,7 +323,7 @@ def prepare_modeller(
             )
         return load_existing_modeller(config.paths.topology_path)
 
-    modeller = build_modeller(forcefield, config)
+    modeller = build_modeller(config, forcefield)
     write_topology(modeller, config.paths.topology_path)
     return modeller
 
