@@ -43,7 +43,7 @@ CLI flags are intentionally limited to run control:
 python batch_md.py --jobs jobs.yaml --workers 1
 ```
 
-Each job inherits a base config, overrides path-level fields such as `paths.pdb` and `paths.run_id`, writes a generated config into `generated_configs/`, then launches `01_md.py` with that generated config.
+Each job inherits a base config, overrides path-level fields such as `paths.pdb` or `paths.prmtop`/`paths.inpcrd` and `paths.run_id`, writes a generated config into `generated_configs/`, then launches `01_md.py` with that generated config.
 
 ## Post-processing a trajectory with MDTraj
 
@@ -65,7 +65,9 @@ By default the script tries to use the MDTraj selection `protein` as the anchor 
 
 | Key | Type | Required | Meaning |
 | --- | --- | --- | --- |
-| `pdb` | string | yes | Input PDB structure path |
+| `pdb` | string | if using PDB input | Input PDB structure path |
+| `prmtop` | string | if using Amber input | Input Amber topology (`tleap` `prmtop`) |
+| `inpcrd` | string | if using Amber input | Input Amber coordinates (`tleap` `inpcrd`) |
 | `output_root` | string | no | Root output directory, default `data/md_runs` |
 | `run_id` | string | no | Name of the simulation subdirectory, default `default` |
 | `topology` | string | yes | Output topology filename/path |
@@ -77,14 +79,20 @@ By default the script tries to use the MDTraj selection `protein` as the anchor 
 **Path rules**
 
 - Absolute paths are used as-is.
-- Relative `paths.pdb` and `paths.output_root` are resolved from the current working directory.
+- Relative `paths.pdb`, `paths.prmtop`, `paths.inpcrd`, and `paths.output_root` are resolved from the current working directory.
 - Relative output filenames like `topology.pdb` or `traj.dcd` are placed under the workflow directories derived from `output_root` and `run_id`.
 - Relative output paths with their own parent directory are resolved from the current working directory.
 
+**Input modes**
+
+- Provide `paths.pdb` for the existing PDB-based workflow.
+- Provide both `paths.prmtop` and `paths.inpcrd` to run from an Amber/TLeap system.
+- Do not mix the two input styles in the same config.
+
 ### `force_fields`
 
-- Type: non-empty list of strings
-- Meaning: OpenMM force-field XML files passed to `ForceField(...)`
+- Type: non-empty list of strings for PDB input; optional for Amber input
+- Meaning: OpenMM force-field XML files passed to `ForceField(...)` when starting from PDB
 
 ### `thermodynamics`
 

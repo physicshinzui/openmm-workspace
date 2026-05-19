@@ -25,8 +25,12 @@ class RestraintConfig:
 @dataclass(frozen=True)
 class SimulationPaths:
     config_path: Path
-    pdb_path: Path
+    input_format: str
+    pdb_path: Optional[Path]
+    prmtop_path: Optional[Path]
+    inpcrd_path: Optional[Path]
     pdb_copy_path: Path
+    input_copy_paths: tuple[Path, ...]
     output_root: Path
     run_root: Path
     initial_dir: Path
@@ -141,18 +145,33 @@ def load_simulation_config(
     system_cfg = _require_mapping(raw, "system", config_path)
     simulation_cfg = _require_mapping(raw, "simulation", config_path)
     reporting = _require_mapping(raw, "reporting", config_path)
+    input_format = _detect_input_format(paths, config_path)
 
     force_fields_raw = raw.get("force_fields")
-    if not isinstance(force_fields_raw, list) or not force_fields_raw:
+    if input_format == "pdb":
+        if not isinstance(force_fields_raw, list) or not force_fields_raw:
+            raise ValueError(
+                f"Config '{config_path}' must define a non-empty 'force_fields' list."
+            )
+        force_field_files = tuple(
+            _require_non_empty_string(
+                item, f"force_fields[{index}]", config_path
+            )
+            for index, item in enumerate(force_fields_raw)
+        )
+    elif force_fields_raw is None:
+        force_field_files = ()
+    elif not isinstance(force_fields_raw, list):
         raise ValueError(
-            f"Config '{config_path}' must define a non-empty 'force_fields' list."
+            f"Config '{config_path}' must define 'force_fields' as a list."
         )
-    force_field_files = tuple(
-        _require_non_empty_string(
-            item, f"force_fields[{index}]", config_path
+    else:
+        force_field_files = tuple(
+            _require_non_empty_string(
+                item, f"force_fields[{index}]", config_path
+            )
+            for index, item in enumerate(force_fields_raw)
         )
-        for index, item in enumerate(force_fields_raw)
-    )
 
     restraints_raw = raw.get("restraints")
     restraints = None
@@ -177,6 +196,7 @@ def load_simulation_config(
         paths=paths,
         config_path=config_path,
         runtime_root=runtime_root,
+        input_format=input_format,
     )
 
     return SimulationConfig(
@@ -269,11 +289,34 @@ def _build_paths(
     paths: Mapping[str, Any],
     config_path: Path,
     runtime_root: Optional[Path],
+    input_format: str,
 ) -> SimulationPaths:
-    pdb_path = resolve_runtime_path(
-        _require_non_empty_string(paths.get("pdb"), "paths.pdb", config_path),
-        runtime_root,
-    )
+    pdb_path: Optional[Path] = None
+    prmtop_path: Optional[Path] = None
+    inpcrd_path: Optional[Path] = None
+    input_copy_paths: tuple[Path, ...]
+
+    if input_format == "pdb":
+        pdb_path = resolve_runtime_path(
+            _require_non_empty_string(paths.get("pdb"), "paths.pdb", config_path),
+            runtime_root,
+        )
+        input_copy_paths = (pdb_path,)
+    else:
+        prmtop_path = resolve_runtime_path(
+            _require_non_empty_string(
+                paths.get("prmtop"), "paths.prmtop", config_path
+            ),
+            runtime_root,
+        )
+        inpcrd_path = resolve_runtime_path(
+            _require_non_empty_string(
+                paths.get("inpcrd"), "paths.inpcrd", config_path
+            ),
+            runtime_root,
+        )
+        input_copy_paths = (prmtop_path, inpcrd_path)
+
     output_root = resolve_runtime_path(
         str(paths.get("output_root", "data/md_runs")),
         runtime_root,
@@ -281,10 +324,17 @@ def _build_paths(
     run_id = _require_non_empty_string(
         paths.get("run_id", "default"), "paths.run_id", config_path
     )
-    run_root = output_root / pdb_path.stem
+    if pdb_path is not None:
+        run_name = pdb_path.stem
+    else:
+        assert prmtop_path is not None
+        run_name = prmtop_path.stem
+    run_root = output_root / run_name
     initial_dir = run_root / "initial"
     simulation_dir = run_root / "simulations" / run_id
-    pdb_copy_path = initial_dir / pdb_path.name
+    pdb_copy_path = initial_dir / (
+        pdb_path.name if pdb_path is not None else prmtop_path.name
+    )
 
     topology_path = _resolve_output_path(
         paths.get("topology"),
@@ -324,8 +374,12 @@ def _build_paths(
 
     return SimulationPaths(
         config_path=config_path,
+        input_format=input_format,
         pdb_path=pdb_path,
+        prmtop_path=prmtop_path,
+        inpcrd_path=inpcrd_path,
         pdb_copy_path=pdb_copy_path,
+        input_copy_paths=input_copy_paths,
         output_root=output_root,
         run_root=run_root,
         initial_dir=initial_dir,
@@ -337,6 +391,31 @@ def _build_paths(
         log_path=log_path,
         checkpoint_path=checkpoint_path,
     )
+
+
+def _detect_input_format(
+    paths: Mapping[str, Any], config_path: Path
+) -> str:
+    pdb_path = paths.get("pdb")
+    prmtop_path = paths.get("prmtop")
+    inpcrd_path = paths.get("inpcrd")
+
+    has_pdb = pdb_path is not None
+    has_amber = prmtop_path is not None or inpcrd_path is not None
+
+    if has_pdb and has_amber:
+        raise ValueError(
+            f"Config '{config_path}' must use either 'paths.pdb' or "
+            "'paths.prmtop'/'paths.inpcrd', not both."
+        )
+    if has_pdb:
+        return "pdb"
+    if prmtop_path is None or inpcrd_path is None:
+        raise ValueError(
+            f"Config '{config_path}' must define either 'paths.pdb' or both "
+            "'paths.prmtop' and 'paths.inpcrd'."
+        )
+    return "amber"
 
 
 def _resolve_output_path(

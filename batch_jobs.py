@@ -22,7 +22,9 @@ DEFAULT_MD_SCRIPT = Path("01_md.py")
 class BatchJobSpec:
     index: int
     name: str
-    pdb: str
+    pdb: Optional[str]
+    prmtop: Optional[str]
+    inpcrd: Optional[str]
     config_path: Path
     run_id: Optional[str]
     output_root: Optional[str]
@@ -54,7 +56,23 @@ def load_job_specs(path: Path) -> list[BatchJobSpec]:
 def parse_job_spec(
     *, index: int, raw_job: dict[str, Any], source_path: Path
 ) -> BatchJobSpec:
-    pdb = _require_non_empty_string(raw_job.get("pdb"), "pdb", index, source_path)
+    pdb = _optional_string(raw_job.get("pdb"), "pdb", index, source_path)
+    prmtop = _optional_string(raw_job.get("prmtop"), "prmtop", index, source_path)
+    inpcrd = _optional_string(raw_job.get("inpcrd"), "inpcrd", index, source_path)
+    if pdb is None and prmtop is None and inpcrd is None:
+        raise ValueError(
+            f"Job #{index} in '{source_path}' must define either 'pdb' or both "
+            "'prmtop' and 'inpcrd'."
+        )
+    if pdb is not None and (prmtop is not None or inpcrd is not None):
+        raise ValueError(
+            f"Job #{index} in '{source_path}' must not mix 'pdb' with "
+            "'prmtop'/'inpcrd'."
+        )
+    if (prmtop is None) != (inpcrd is None):
+        raise ValueError(
+            f"Job #{index} in '{source_path}' must define both 'prmtop' and 'inpcrd'."
+        )
     run_id = _optional_string(raw_job.get("run_id"), "run_id", index, source_path)
     output_root = _optional_string(
         raw_job.get("output_root"), "output_root", index, source_path
@@ -64,7 +82,7 @@ def parse_job_spec(
     )
     job_name = raw_job.get("name")
     if job_name is None:
-        name = derive_job_name(index, pdb, run_id)
+        name = derive_job_name(index, pdb, prmtop, run_id)
     else:
         name = _require_non_empty_string(job_name, "name", index, source_path)
 
@@ -98,6 +116,8 @@ def parse_job_spec(
         index=index,
         name=name,
         pdb=pdb,
+        prmtop=prmtop,
+        inpcrd=inpcrd,
         config_path=config_path,
         run_id=run_id,
         output_root=output_root,
@@ -110,9 +130,13 @@ def parse_job_spec(
     )
 
 
-def derive_job_name(index: int, pdb: str, run_id: Optional[str]) -> str:
-    pdb_path = Path(pdb)
-    bits = [f"{index:03d}", sanitize_component(pdb_path.stem)]
+def derive_job_name(
+    index: int, pdb: Optional[str], prmtop: Optional[str], run_id: Optional[str]
+) -> str:
+    source = pdb or prmtop
+    assert source is not None
+    source_path = Path(source)
+    bits = [f"{index:03d}", sanitize_component(source_path.stem)]
     if run_id:
         bits.append(sanitize_component(run_id))
     return "-".join(bits)
@@ -171,7 +195,14 @@ def prepare_config(
     if not isinstance(paths, dict):
         raise ValueError("The base config must expose 'paths' as a mapping.")
 
-    paths["pdb"] = job.pdb
+    if job.pdb is not None:
+        paths["pdb"] = job.pdb
+        paths.pop("prmtop", None)
+        paths.pop("inpcrd", None)
+    elif job.prmtop is not None and job.inpcrd is not None:
+        paths["prmtop"] = job.prmtop
+        paths["inpcrd"] = job.inpcrd
+        paths.pop("pdb", None)
     if job.output_root is not None:
         paths["output_root"] = job.output_root
     if job.run_id is not None:

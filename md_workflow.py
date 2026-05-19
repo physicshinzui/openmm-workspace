@@ -11,6 +11,8 @@ from openmm import LangevinMiddleIntegrator, MonteCarloBarostat, unit
 from openmm.app import (
     CheckpointReporter,
     DCDReporter,
+    AmberInpcrdFile,
+    AmberPrmtopFile,
     ForceField,
     HBonds,
     Modeller,
@@ -95,7 +97,14 @@ def select_restraint_atoms(topology_path: Path, selection_query: str) -> list[in
     return sorted(set(int(idx) for idx in atom_group.indices))
 
 
-def build_modeller(forcefield: ForceField, config: SimulationConfig) -> Modeller:
+def build_modeller(
+    config: SimulationConfig, forcefield: Optional[ForceField]
+) -> Modeller:
+    if config.paths.input_format == "amber":
+        return load_amber_modeller(config)
+
+    if forcefield is None:
+        raise RuntimeError("A force field is required for PDB-based inputs.")
     pdb = PDBFile(str(config.paths.pdb_path))
     modeller = Modeller(pdb.topology, pdb.positions)
     modeller.deleteWater()
@@ -112,13 +121,24 @@ def build_modeller(forcefield: ForceField, config: SimulationConfig) -> Modeller
     return modeller
 
 
+def load_amber_modeller(config: SimulationConfig) -> Modeller:
+    assert config.paths.prmtop_path is not None
+    assert config.paths.inpcrd_path is not None
+    prmtop = AmberPrmtopFile(str(config.paths.prmtop_path))
+    inpcrd = AmberInpcrdFile(str(config.paths.inpcrd_path))
+    modeller = Modeller(prmtop.topology, inpcrd.positions)
+    if inpcrd.boxVectors is not None:
+        modeller.topology.setPeriodicBoxVectors(inpcrd.boxVectors)
+    return modeller
+
+
 def load_existing_modeller(topology_path: Path) -> Modeller:
     pdb = PDBFile(str(topology_path))
     return Modeller(pdb.topology, pdb.positions)
 
 
 def build_system(
-    modeller: Modeller, forcefield: ForceField, config: SimulationConfig
+    modeller: Modeller, forcefield: Optional[ForceField], config: SimulationConfig
 ) -> openmm.System:
     kwargs = dict(
         nonbondedMethod=PME,
@@ -128,6 +148,12 @@ def build_system(
     )
     if config.system.hydrogen_mass_amu is not None:
         kwargs["hydrogenMass"] = config.system.hydrogen_mass_amu * unit.amu
+    if config.paths.input_format == "amber":
+        assert config.paths.prmtop_path is not None
+        prmtop = AmberPrmtopFile(str(config.paths.prmtop_path))
+        return prmtop.createSystem(**kwargs)
+    if forcefield is None:
+        raise RuntimeError("A force field is required for PDB-based inputs.")
     return forcefield.createSystem(modeller.topology, **kwargs)
 
 
@@ -262,31 +288,32 @@ def ensure_output_directories(config: SimulationConfig, checkpoint_path: Path) -
 
 
 def copy_input_structure(config: SimulationConfig) -> None:
-    if not config.paths.pdb_path.exists():
-        raise FileNotFoundError(
-            f"Initial structure file '{config.paths.pdb_path}' not found."
-        )
+    for source_path in config.paths.input_copy_paths:
+        if not source_path.exists():
+            raise FileNotFoundError(
+                f"Initial structure file '{source_path}' not found."
+            )
 
-    copy_target = config.paths.pdb_copy_path
-    same_location = copy_target == config.paths.pdb_path
-    if not same_location and copy_target.exists():
-        try:
-            same_location = config.paths.pdb_path.samefile(copy_target)
-        except FileNotFoundError:
-            same_location = False
+        copy_target = config.paths.initial_dir / source_path.name
+        same_location = copy_target == source_path
+        if not same_location and copy_target.exists():
+            try:
+                same_location = source_path.samefile(copy_target)
+            except FileNotFoundError:
+                same_location = False
 
-    if same_location:
-        return
+        if same_location:
+            continue
 
-    if (
-        not copy_target.exists()
-        or config.paths.pdb_path.stat().st_mtime > copy_target.stat().st_mtime
-    ):
-        shutil.copy2(config.paths.pdb_path, copy_target)
+        if (
+            not copy_target.exists()
+            or source_path.stat().st_mtime > copy_target.stat().st_mtime
+        ):
+            shutil.copy2(source_path, copy_target)
 
 
 def prepare_modeller(
-    forcefield: ForceField, config: SimulationConfig, restart: bool
+    forcefield: Optional[ForceField], config: SimulationConfig, restart: bool
 ) -> Modeller:
     if restart:
         if not config.paths.topology_path.exists():
@@ -380,7 +407,7 @@ def run_simulation(
     ensure_output_directories(config, effective_checkpoint)
     copy_input_structure(config)
 
-    forcefield = ForceField(*config.force_field_files)
+    forcefield = ForceField(*config.force_field_files) if config.force_field_files else None
     modeller = prepare_modeller(forcefield, config, restart)
     system = build_system(modeller, forcefield, config)
     restraint_index = maybe_add_restraints(system, modeller, config, restart)
