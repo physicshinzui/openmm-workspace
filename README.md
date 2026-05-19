@@ -80,7 +80,7 @@ By default the script tries to use the MDTraj selection `protein` as the anchor 
 
 - Absolute paths are used as-is.
 - Relative `paths.pdb`, `paths.prmtop`, `paths.inpcrd`, and `paths.output_root` are resolved from the current working directory.
-- Relative output filenames like `topology.pdb` or `traj.dcd` are placed under the workflow directories derived from `output_root` and `run_id`.
+- Relative output filenames like `topology.pdb` or `traj.dcd` are placed under `data/md_runs/<system_name>/<run_id>/output/`.
 - Relative output paths with their own parent directory are resolved from the current working directory.
 
 **Input modes**
@@ -140,6 +140,18 @@ Optional mapping.
 If the `restraints` section is present, both fields must be set. A zero force constant is allowed and still validates. Restraints are applied during the configured NVT and NPT stages of a fresh run, then removed before production begins. Restart runs resume production without reapplying restraints.
 
 ## Outputs
+
+Each run is stored as:
+
+```text
+data/md_runs/
+  <system_name>/
+    <run_id>/
+      input/
+      output/
+```
+
+Typical output files live under `output/`:
 
 - `topology.pdb` — solvated topology after modeller preparation
 - `minimized.pdb` — structure after minimisation

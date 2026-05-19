@@ -274,9 +274,10 @@ def compute_target_production_steps(
 def ensure_output_directories(config: SimulationConfig, checkpoint_path: Path) -> None:
     required_dirs = {
         config.paths.output_root,
+        config.paths.system_root,
         config.paths.run_root,
-        config.paths.initial_dir,
-        config.paths.simulation_dir,
+        config.paths.input_dir,
+        config.paths.output_dir,
         config.paths.topology_path.parent,
         config.paths.minimized_path.parent,
         config.paths.trajectory_path.parent,
@@ -294,7 +295,7 @@ def copy_input_structure(config: SimulationConfig) -> None:
                 f"Initial structure file '{source_path}' not found."
             )
 
-        copy_target = config.paths.initial_dir / source_path.name
+        copy_target = config.paths.input_dir / source_path.name
         same_location = copy_target == source_path
         if not same_location and copy_target.exists():
             try:

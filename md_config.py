@@ -26,15 +26,16 @@ class RestraintConfig:
 class SimulationPaths:
     config_path: Path
     input_format: str
+    system_name: str
     pdb_path: Optional[Path]
     prmtop_path: Optional[Path]
     inpcrd_path: Optional[Path]
-    pdb_copy_path: Path
     input_copy_paths: tuple[Path, ...]
     output_root: Path
+    system_root: Path
     run_root: Path
-    initial_dir: Path
-    simulation_dir: Path
+    input_dir: Path
+    output_dir: Path
     run_id: str
     topology_path: Path
     minimized_path: Path
@@ -295,6 +296,7 @@ def _build_paths(
     prmtop_path: Optional[Path] = None
     inpcrd_path: Optional[Path] = None
     input_copy_paths: tuple[Path, ...]
+    system_name: str
 
     if input_format == "pdb":
         pdb_path = resolve_runtime_path(
@@ -302,6 +304,7 @@ def _build_paths(
             runtime_root,
         )
         input_copy_paths = (pdb_path,)
+        system_name = pdb_path.stem
     else:
         prmtop_path = resolve_runtime_path(
             _require_non_empty_string(
@@ -316,6 +319,7 @@ def _build_paths(
             runtime_root,
         )
         input_copy_paths = (prmtop_path, inpcrd_path)
+        system_name = prmtop_path.stem
 
     output_root = resolve_runtime_path(
         str(paths.get("output_root", "data/md_runs")),
@@ -324,66 +328,60 @@ def _build_paths(
     run_id = _require_non_empty_string(
         paths.get("run_id", "default"), "paths.run_id", config_path
     )
-    if pdb_path is not None:
-        run_name = pdb_path.stem
-    else:
-        assert prmtop_path is not None
-        run_name = prmtop_path.stem
-    run_root = output_root / run_name
-    initial_dir = run_root / "initial"
-    simulation_dir = run_root / "simulations" / run_id
-    pdb_copy_path = initial_dir / (
-        pdb_path.name if pdb_path is not None else prmtop_path.name
-    )
+    system_root = output_root / system_name
+    run_root = system_root / run_id
+    input_dir = run_root / "input"
+    output_dir = run_root / "output"
 
     topology_path = _resolve_output_path(
         paths.get("topology"),
         "paths.topology",
         config_path,
-        initial_dir,
+        output_dir,
         runtime_root,
     )
     minimized_path = _resolve_output_path(
         paths.get("minimized"),
         "paths.minimized",
         config_path,
-        simulation_dir,
+        output_dir,
         runtime_root,
     )
     trajectory_path = _resolve_output_path(
         paths.get("trajectory"),
         "paths.trajectory",
         config_path,
-        simulation_dir,
+        output_dir,
         runtime_root,
     )
     log_path = _resolve_output_path(
         paths.get("log"),
         "paths.log",
         config_path,
-        simulation_dir,
+        output_dir,
         runtime_root,
     )
     checkpoint_path = _resolve_output_path(
         paths.get("checkpoint", "checkpoint.chk"),
         "paths.checkpoint",
         config_path,
-        simulation_dir,
+        output_dir,
         runtime_root,
     )
 
     return SimulationPaths(
         config_path=config_path,
         input_format=input_format,
+        system_name=system_name,
         pdb_path=pdb_path,
         prmtop_path=prmtop_path,
         inpcrd_path=inpcrd_path,
-        pdb_copy_path=pdb_copy_path,
         input_copy_paths=input_copy_paths,
         output_root=output_root,
+        system_root=system_root,
         run_root=run_root,
-        initial_dir=initial_dir,
-        simulation_dir=simulation_dir,
+        input_dir=input_dir,
+        output_dir=output_dir,
         run_id=run_id,
         topology_path=topology_path,
         minimized_path=minimized_path,
