@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-from md_config import DEFAULT_CONFIG_PATH, load_yaml_list, load_yaml_mapping, write_yaml_mapping
+from md_config import load_yaml_list, load_yaml_mapping, write_yaml_mapping
 
 
 DEFAULT_JOBS_PATH = Path("jobs.yaml")
@@ -45,16 +45,25 @@ class PreparedJob:
     config_path: Path
 
 
-def load_job_specs(path: Path) -> list[BatchJobSpec]:
+def load_job_specs(path: Path, default_config_path: Path) -> list[BatchJobSpec]:
     raw_jobs = load_yaml_list(path)
     return [
-        parse_job_spec(index=index, raw_job=raw_job, source_path=path)
+        parse_job_spec(
+            index=index,
+            raw_job=raw_job,
+            source_path=path,
+            default_config_path=default_config_path,
+        )
         for index, raw_job in enumerate(raw_jobs, start=1)
     ]
 
 
 def parse_job_spec(
-    *, index: int, raw_job: dict[str, Any], source_path: Path
+    *,
+    index: int,
+    raw_job: dict[str, Any],
+    source_path: Path,
+    default_config_path: Path,
 ) -> BatchJobSpec:
     pdb = _optional_string(raw_job.get("pdb"), "pdb", index, source_path)
     prmtop = _optional_string(raw_job.get("prmtop"), "prmtop", index, source_path)
@@ -86,7 +95,7 @@ def parse_job_spec(
     else:
         name = _require_non_empty_string(job_name, "name", index, source_path)
 
-    config_path_raw = raw_job.get("config", DEFAULT_CONFIG_PATH)
+    config_path_raw = raw_job.get("config", default_config_path)
     config_path = _coerce_path(config_path_raw, "config", index, source_path)
 
     until_ns_raw = raw_job.get("until_ns")
@@ -291,7 +300,7 @@ def run_batch_jobs(
     workers: int,
     dry_run: bool,
 ) -> None:
-    job_specs = load_job_specs(jobs_path)
+    job_specs = load_job_specs(jobs_path, default_config_path)
     prepared_jobs = prepare_jobs(
         jobs=job_specs,
         default_config_path=default_config_path,
