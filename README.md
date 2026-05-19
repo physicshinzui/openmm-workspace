@@ -65,6 +65,7 @@ By default the script tries to use the MDTraj selection `protein` as the anchor 
 
 | Key | Type | Required | Meaning |
 | --- | --- | --- | --- |
+| `input_format` | string | no | `pdb` or `amber`; if omitted, the loader auto-detects the mode |
 | `pdb` | string | if using PDB input | Input PDB structure path |
 | `prmtop` | string | if using Amber input | Input Amber topology (`tleap` `prmtop`) |
 | `inpcrd` | string | if using Amber input | Input Amber coordinates (`tleap` `inpcrd`) |
@@ -85,9 +86,14 @@ By default the script tries to use the MDTraj selection `protein` as the anchor 
 
 **Input modes**
 
-- Provide `paths.pdb` for the existing PDB-based workflow.
-- Provide both `paths.prmtop` and `paths.inpcrd` to run from an Amber/TLeap system.
-- Do not mix the two input styles in the same config.
+- `paths.input_format: pdb`
+  - requires `paths.pdb`
+  - forbids `paths.prmtop`, `paths.inpcrd`
+  - requires `force_fields`
+- `paths.input_format: amber`
+  - requires `paths.prmtop`, `paths.inpcrd`
+  - forbids `paths.pdb`, `force_fields`
+- If `paths.input_format` is omitted, the loader auto-detects the mode from the file paths.
 
 ### `force_fields`
 

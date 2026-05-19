@@ -1,4 +1,5 @@
 paths:
+  input_format: pdb
   pdb: 1aki/1AKI.pdb
   output_root: data/md_runs
   run_id: production

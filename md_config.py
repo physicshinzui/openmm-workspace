@@ -146,7 +146,7 @@ def load_simulation_config(
     system_cfg = _require_mapping(raw, "system", config_path)
     simulation_cfg = _require_mapping(raw, "simulation", config_path)
     reporting = _require_mapping(raw, "reporting", config_path)
-    input_format = _detect_input_format(paths, config_path)
+    input_format = _resolve_input_format(paths, config_path)
 
     force_fields_raw = raw.get("force_fields")
     if input_format == "pdb":
@@ -160,18 +160,29 @@ def load_simulation_config(
             )
             for index, item in enumerate(force_fields_raw)
         )
-    elif force_fields_raw is None:
-        force_field_files = ()
-    elif not isinstance(force_fields_raw, list):
-        raise ValueError(
-            f"Config '{config_path}' must define 'force_fields' as a list."
-        )
     else:
-        force_field_files = tuple(
-            _require_non_empty_string(
-                item, f"force_fields[{index}]", config_path
+        if "force_fields" in raw:
+            raise ValueError(
+                f"Config '{config_path}' must not define 'force_fields' when "
+                "using Amber input."
             )
-            for index, item in enumerate(force_fields_raw)
+        force_field_files = ()
+
+    if input_format == "amber":
+        if "pdb" in paths:
+            raise ValueError(
+                f"Config '{config_path}' must not define 'paths.pdb' when "
+                "using Amber input."
+            )
+        if "prmtop" not in paths or "inpcrd" not in paths:
+            raise ValueError(
+                f"Config '{config_path}' must define both 'paths.prmtop' and "
+                "'paths.inpcrd' when using Amber input."
+            )
+    elif "prmtop" in paths or "inpcrd" in paths:
+        raise ValueError(
+            f"Config '{config_path}' must not define 'paths.prmtop' or "
+            "'paths.inpcrd' when using PDB input."
         )
 
     restraints_raw = raw.get("restraints")
@@ -391,29 +402,49 @@ def _build_paths(
     )
 
 
-def _detect_input_format(
+def _resolve_input_format(
     paths: Mapping[str, Any], config_path: Path
 ) -> str:
-    pdb_path = paths.get("pdb")
-    prmtop_path = paths.get("prmtop")
-    inpcrd_path = paths.get("inpcrd")
+    raw_format = paths.get("input_format")
+    if raw_format is None:
+        return _detect_legacy_input_format(paths, config_path)
+    if not isinstance(raw_format, str) or not raw_format.strip():
+        raise ValueError(
+            f"Config '{config_path}' must define 'paths.input_format' as a non-empty string."
+        )
+    input_format = raw_format.strip().lower()
+    if input_format not in {"pdb", "amber"}:
+        raise ValueError(
+            f"Config '{config_path}' must define 'paths.input_format' as 'pdb' or 'amber'."
+        )
+    return input_format
 
-    has_pdb = pdb_path is not None
-    has_amber = prmtop_path is not None or inpcrd_path is not None
 
-    if has_pdb and has_amber:
+def _detect_legacy_input_format(
+    paths: Mapping[str, Any], config_path: Path
+) -> str:
+    has_pdb = "pdb" in paths
+    has_prmtop = "prmtop" in paths
+    has_inpcrd = "inpcrd" in paths
+
+    if has_pdb and (has_prmtop or has_inpcrd):
         raise ValueError(
             f"Config '{config_path}' must use either 'paths.pdb' or "
             "'paths.prmtop'/'paths.inpcrd', not both."
         )
     if has_pdb:
         return "pdb"
-    if prmtop_path is None or inpcrd_path is None:
-        raise ValueError(
-            f"Config '{config_path}' must define either 'paths.pdb' or both "
-            "'paths.prmtop' and 'paths.inpcrd'."
-        )
-    return "amber"
+    if has_prmtop or has_inpcrd:
+        if not (has_prmtop and has_inpcrd):
+            raise ValueError(
+                f"Config '{config_path}' must define both 'paths.prmtop' and "
+                "'paths.inpcrd'."
+            )
+        return "amber"
+    raise ValueError(
+        f"Config '{config_path}' must define 'paths.input_format' or provide either "
+        "'paths.pdb' or both 'paths.prmtop' and 'paths.inpcrd'."
+    )
 
 
 def _resolve_output_path(
