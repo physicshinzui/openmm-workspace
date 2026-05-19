@@ -1,40 +1,55 @@
 paths:
+  # Set to "pdb" for force-field-based setup, or "amber" for prmtop/inpcrd input.
   input_format: pdb
+  # Input structure for PDB mode.
   pdb: 1aki/1AKI.pdb
+  # Run outputs are stored under data/md_runs/<system_name>/<run_id>/.
   output_root: data/md_runs
+  # Name of this run directory.
   run_id: production
+  # Output topology saved after system preparation.
   topology: topology.pdb
+  # Output minimized structure.
   minimized: minimized.pdb
+  # Output trajectory.
   trajectory: traj.dcd
+  # CSV log file.
   log: md_log.txt
+  # Checkpoint file for restart.
   checkpoint: checkpoint.chk
 
+# OpenMM force-field XML files used for PDB input.
 force_fields:
   - amber19/protein.ff19SB.xml
   - amber19/tip3pfb.xml
 
+# Temperature, pressure, friction, and timestep.
 thermodynamics:
   temperature: 300
   pressure: 1
   friction_coefficient: 1.0
   step_size: 0.004  # ps; 4 fs with HMR
 
+# System construction settings.
 system:
   nonbonded_cutoff: 1.0
   solvent_padding: 1.5
   ionic_strength: 0.15
   hydrogen_mass: 4.0
 
+# Stage lengths in MD steps.
 simulation:
   nvt_steps: 25000
   npt_steps: 25000
   production_steps: 25000
 
+# Output/reporting intervals.
 reporting:
-  dcd_interval: 25
-  stdout_interval: 25
-  log_interval: 25
+  dcd_interval: 25000
+  stdout_interval: 25000
+  log_interval: 25000  # 25000 steps × 0.004 ps = 100 ps
 
+# Optional positional restraints.
 restraints:
   force_constant: 0.0
   selection: "backbone"

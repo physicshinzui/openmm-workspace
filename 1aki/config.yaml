@@ -30,8 +30,8 @@ simulation:
 
 reporting:
   dcd_interval: 25000
-  stdout_interval: 5000
-  log_interval: 5000
+  stdout_interval: 5000  # 5000 steps × 0.004 ps = 20 ps
+  log_interval: 5000  # 5000 steps × 0.004 ps = 20 ps
 
 restraints:
   force_constant: 1000
