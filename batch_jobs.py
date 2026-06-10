@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import copy
 import os
+import shlex
 import re
+import shutil
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Optional
 
@@ -16,6 +18,7 @@ from md_config import load_yaml_list, load_yaml_mapping, write_yaml_mapping
 DEFAULT_JOBS_PATH = Path("jobs.yaml")
 DEFAULT_GENERATED_DIR = Path("generated_configs")
 DEFAULT_MD_SCRIPT = Path("01_md.py")
+DEFAULT_PBS_TEMPLATE = Path("scheduler/pbs/md_job.pbs.j2")
 
 
 @dataclass(frozen=True)
@@ -31,9 +34,12 @@ class BatchJobSpec:
     until_ns: Optional[float]
     checkpoint: Optional[str]
     restart: bool
+    replicas: int
+    replica_index: Optional[int]
     extra_args: tuple[str, ...]
     env: dict[str, str]
     path_overrides: dict[str, str]
+    scheduler: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -42,7 +48,12 @@ class PreparedJob:
     name: str
     command: list[str]
     env: dict[str, str]
+    pbs_env: dict[str, str]
     config_path: Path
+    scheduler: dict[str, Any]
+    pbs_script_path: Optional[Path] = None
+    pbs_stdout_path: Optional[Path] = None
+    pbs_stderr_path: Optional[Path] = None
 
 
 def load_job_specs(path: Path, default_config_path: Path) -> list[BatchJobSpec]:
@@ -56,6 +67,24 @@ def load_job_specs(path: Path, default_config_path: Path) -> list[BatchJobSpec]:
         )
         for index, raw_job in enumerate(raw_jobs, start=1)
     ]
+
+
+def expand_job_specs(jobs: list[BatchJobSpec]) -> list[BatchJobSpec]:
+    expanded: list[BatchJobSpec] = []
+    for job in jobs:
+        if job.replicas == 1:
+            expanded.append(job)
+            continue
+
+        for replica_index in range(1, job.replicas + 1):
+            expanded.append(
+                replace(
+                    job,
+                    name=f"{job.name}-rep{replica_index:03d}",
+                    replica_index=replica_index,
+                )
+            )
+    return expanded
 
 
 def parse_job_spec(
@@ -81,6 +110,12 @@ def parse_job_spec(
     if (prmtop is None) != (inpcrd is None):
         raise ValueError(
             f"Job #{index} in '{source_path}' must define both 'prmtop' and 'inpcrd'."
+        )
+    replicas_raw = raw_job.get("replicas", 1)
+    replicas = _coerce_int(replicas_raw, "replicas", index, source_path)
+    if replicas <= 0:
+        raise ValueError(
+            f"Job #{index} in '{source_path}' must define 'replicas' as a positive integer."
         )
     run_id = _optional_string(raw_job.get("run_id"), "run_id", index, source_path)
     output_root = _optional_string(
@@ -114,6 +149,9 @@ def parse_job_spec(
     path_overrides = _string_mapping(
         raw_job.get("paths", {}), "paths", index, source_path
     )
+    scheduler = _mapping(
+        raw_job.get("scheduler", {}), "scheduler", index, source_path
+    )
 
     restart = raw_job.get("restart", False)
     if not isinstance(restart, bool):
@@ -133,14 +171,21 @@ def parse_job_spec(
         until_ns=until_ns,
         checkpoint=checkpoint,
         restart=restart,
+        replicas=replicas,
+        replica_index=None,
         extra_args=extra_args,
         env=env,
         path_overrides=path_overrides,
+        scheduler=scheduler,
     )
 
 
 def derive_job_name(
-    index: int, pdb: Optional[str], prmtop: Optional[str], run_id: Optional[str]
+    index: int,
+    pdb: Optional[str],
+    prmtop: Optional[str],
+    run_id: Optional[str],
+    replica_index: Optional[int] = None,
 ) -> str:
     source = pdb or prmtop
     assert source is not None
@@ -148,6 +193,8 @@ def derive_job_name(
     bits = [f"{index:03d}", sanitize_component(source_path.stem)]
     if run_id:
         bits.append(sanitize_component(run_id))
+    if replica_index is not None:
+        bits.append(f"rep{replica_index:03d}")
     return "-".join(bits)
 
 
@@ -167,7 +214,7 @@ def prepare_jobs(
     base_config_cache: dict[Path, dict[str, Any]] = {}
     prepared: list[PreparedJob] = []
 
-    for job in jobs:
+    for job in expand_job_specs(jobs):
         template_path = job.config_path if job.config_path else default_config_path
         base_config = load_base_config(template_path, base_config_cache)
         merged_config = prepare_config(base_config, job)
@@ -175,13 +222,21 @@ def prepare_jobs(
         command = build_command(md_script, python_executable, written_config, job)
         env = os.environ.copy()
         env.update(job.env)
+        pbs_env = dict(job.env)
+        if job.replica_index is not None:
+            env["MD_REPLICA_INDEX"] = str(job.replica_index)
+            env["MD_REPLICA_TOTAL"] = str(job.replicas)
+            pbs_env["MD_REPLICA_INDEX"] = str(job.replica_index)
+            pbs_env["MD_REPLICA_TOTAL"] = str(job.replicas)
         prepared.append(
             PreparedJob(
                 index=job.index,
                 name=job.name,
                 command=command,
                 env=env,
+                pbs_env=pbs_env,
                 config_path=written_config,
+                scheduler=job.scheduler,
             )
         )
 
@@ -221,6 +276,10 @@ def prepare_config(
 
     for extra_key, extra_value in job.path_overrides.items():
         paths[extra_key] = extra_value
+
+    if job.replica_index is not None:
+        base_run_id = str(paths.get("run_id", f"job_{job.index:03d}"))
+        paths["run_id"] = f"{base_run_id}_rep{job.replica_index:03d}"
 
     return config
 
@@ -290,6 +349,152 @@ def run_jobs(prepared_jobs: list[PreparedJob], workers: int, dry_run: bool) -> N
                 raise SystemExit(code)
 
 
+def submit_pbs_jobs(
+    prepared_jobs: list[PreparedJob],
+    generated_config_dir: Path,
+    pbs_template_path: Path,
+    dry_run: bool,
+    qsub_command: str = "qsub",
+) -> None:
+    if shutil.which(qsub_command) is None and not dry_run:
+        raise FileNotFoundError(
+            f"PBS submit command '{qsub_command}' was not found on PATH."
+        )
+
+    template = pbs_template_path.read_text()
+    pbs_script_dir = generated_config_dir / "pbs"
+    pbs_script_dir.mkdir(parents=True, exist_ok=True)
+
+    for job in prepared_jobs:
+        script_path = pbs_script_dir / f"{job.name}.pbs"
+        stdout_path = pbs_script_dir / f"{job.name}.out"
+        stderr_path = pbs_script_dir / f"{job.name}.err"
+        script_path.write_text(
+            render_pbs_script(
+                template=template,
+                job=job,
+                stdout_path=stdout_path,
+                stderr_path=stderr_path,
+            )
+        )
+        print(f"[job {job.index:03d} | {job.name}] PBS script: {script_path}")
+        print(f"[job {job.index:03d} | {job.name}] qsub command: {qsub_command} {script_path}")
+        if dry_run:
+            continue
+
+        completed = subprocess.run(
+            [qsub_command, str(script_path)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if completed.returncode != 0:
+            if completed.stderr:
+                print(completed.stderr.rstrip(), file=sys.stderr)
+            raise SystemExit(completed.returncode)
+        if completed.stdout.strip():
+            print(
+                f"[job {job.index:03d} | {job.name}] qsub response: {completed.stdout.strip()}"
+            )
+
+
+def render_pbs_script(
+    *,
+    template: str,
+    job: PreparedJob,
+    stdout_path: Path,
+    stderr_path: Path,
+) -> str:
+    command = shlex.join(job.command)
+    scheduler = job.scheduler
+    queue_directive = _pbs_directive("q", scheduler.get("queue"))
+    account_directive = _pbs_directive("A", scheduler.get("account"))
+    walltime = scheduler.get("walltime")
+    walltime_directive = (
+        f"#PBS -l walltime={walltime}\n" if walltime is not None and str(walltime).strip() else ""
+    )
+    resource_directive = _pbs_resource_directive(scheduler.get("resources"))
+    array_directive = _pbs_directive("t", scheduler.get("array")) + _pbs_submit_flags(
+        scheduler.get("submit_flags")
+    )
+    module_lines = _lines_block(scheduler.get("module_lines"))
+    pre_command_lines = _lines_block(scheduler.get("pre_command_lines"))
+    env_lines = "".join(
+        f"export {key}={shlex.quote(value)}\n" for key, value in job.pbs_env.items()
+    )
+    return template.format(
+        job_name=job.name,
+        queue_directive=queue_directive,
+        account_directive=account_directive,
+        resource_directive=resource_directive,
+        walltime_directive=walltime_directive,
+        array_directive=array_directive,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        workdir=Path.cwd(),
+        module_lines=module_lines,
+        pre_command_lines=pre_command_lines,
+        env_lines=env_lines,
+        command=command,
+    )
+
+
+def _pbs_directive(flag: str, value: Optional[str]) -> str:
+    if value is None or not str(value).strip():
+        return ""
+    return f"#PBS -{flag} {value}\n"
+
+
+def _pbs_resource_directive(resources: Any) -> str:
+    if resources is None:
+        return ""
+    if isinstance(resources, str) and resources.strip():
+        return f"#PBS -l {resources.strip()}\n"
+    if not isinstance(resources, dict) or not resources:
+        return ""
+    bits = []
+    for key, value in resources.items():
+        bits.append(f"{key}={value}")
+    return "#PBS -l " + ":".join(bits) + "\n"
+
+
+def _lines_block(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value if value.endswith("\n") else value + "\n"
+    if isinstance(value, list):
+        lines = []
+        for item in value:
+            lines.append(str(item))
+        return "".join(line if line.endswith("\n") else line + "\n" for line in lines)
+    return ""
+
+
+def _pbs_submit_flags(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        items = [value]
+    elif isinstance(value, list):
+        items = [str(item) for item in value]
+    else:
+        return ""
+
+    lines = []
+    for item in items:
+        stripped = item.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#PBS"):
+            lines.append(stripped if stripped.endswith("\n") else stripped + "\n")
+        elif stripped.startswith("-"):
+            lines.append(f"#PBS {stripped}\n")
+        else:
+            lines.append(f"#PBS -{stripped}\n")
+    return "".join(lines)
+
+
 def run_batch_jobs(
     *,
     jobs_path: Path,
@@ -298,6 +503,9 @@ def run_batch_jobs(
     md_script: Path,
     python_executable: str,
     workers: int,
+    mode: str,
+    pbs_template_path: Path,
+    qsub_command: str,
     dry_run: bool,
 ) -> None:
     job_specs = load_job_specs(jobs_path, default_config_path)
@@ -308,6 +516,15 @@ def run_batch_jobs(
         md_script=md_script,
         python_executable=python_executable,
     )
+    if mode == "pbs":
+        submit_pbs_jobs(
+            prepared_jobs,
+            generated_config_dir=generated_config_dir,
+            pbs_template_path=pbs_template_path,
+            dry_run=dry_run,
+            qsub_command=qsub_command,
+        )
+        return
     run_jobs(prepared_jobs, workers, dry_run)
 
 
@@ -335,8 +552,20 @@ def _string_mapping(
     if not isinstance(value, dict):
         raise ValueError(
             f"Job #{index} in '{source_path}' must define '{field_name}' as a mapping."
-        )
+    )
     return {str(key): str(item) for key, item in value.items()}
+
+
+def _mapping(
+    value: Any, field_name: str, index: int, source_path: Path
+) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(
+            f"Job #{index} in '{source_path}' must define '{field_name}' as a mapping."
+        )
+    return dict(value)
 
 
 def _coerce_float(
@@ -345,8 +574,16 @@ def _coerce_float(
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(
             f"Job #{index} in '{source_path}' must define '{field_name}' as a number."
-        )
+    )
     return float(value)
+
+
+def _coerce_int(value: Any, field_name: str, index: int, source_path: Path) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(
+            f"Job #{index} in '{source_path}' must define '{field_name}' as an integer."
+        )
+    return value
 
 
 def _coerce_path(

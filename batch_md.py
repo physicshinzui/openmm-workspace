@@ -8,6 +8,7 @@ from batch_jobs import (
     DEFAULT_GENERATED_DIR,
     DEFAULT_JOBS_PATH,
     DEFAULT_MD_SCRIPT,
+    DEFAULT_PBS_TEMPLATE,
     run_batch_jobs,
 )
 from md_config import DEFAULT_CONFIG_PATH
@@ -48,10 +49,28 @@ def parse_args() -> argparse.Namespace:
         help=f"Python interpreter used to launch jobs (default: {sys.executable}).",
     )
     parser.add_argument(
+        "--mode",
+        choices=("local", "pbs"),
+        default="local",
+        help="Execution mode: run jobs locally or submit each job with qsub.",
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=1,
         help="Number of jobs to run concurrently. Use 1 for sequential execution.",
+    )
+    parser.add_argument(
+        "--pbs-template",
+        type=Path,
+        default=DEFAULT_PBS_TEMPLATE,
+        help=f"PBS script template (default: {DEFAULT_PBS_TEMPLATE}).",
+    )
+    parser.add_argument(
+        "--qsub-command",
+        type=str,
+        default="qsub",
+        help="PBS submit command used in pbs mode.",
     )
     parser.add_argument(
         "--dry-run",
@@ -70,6 +89,9 @@ def main() -> None:
         md_script=args.md_script,
         python_executable=args.python,
         workers=args.workers,
+        mode=args.mode,
+        pbs_template_path=args.pbs_template,
+        qsub_command=args.qsub_command,
         dry_run=args.dry_run,
     )
 
