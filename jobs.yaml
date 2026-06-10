@@ -6,27 +6,10 @@
 
 - name: A
   pdb: ../biomolecular_model_systems/peptides/small/dipeptides/A.pdb
-  run_id: test_msm_A
+  run_id: dipeptide_A
   replicas: 4
-#  scheduler:  # Must be identical across all jobs in PBS array mode.
-#    queue: gpu
-#    walltime: "12:00:00"
-#    array_flag: J  # Use "t" for Torque.
-#    max_concurrent: 4
-#    resources:
-#      nodes: 1
-#      ppn: 3
-#      gpus: 1
-#    submit_flags:
-#      - "-l place=scatter"
-#    module_lines:
-#      - "module load cuda"
-#    pre_command_lines:
-#      - "conda activate openmm"
-  env:
-    CUDA_VISIBLE_DEVICES: "0"
 
-#- name: dipeptide-C
+#- name: C
 #  pdb: ../biomolecular_model_systems/peptides/small/dipeptides/C.pdb
 #  run_id: dipeptide_C
 #

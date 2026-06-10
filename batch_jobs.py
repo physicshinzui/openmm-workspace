@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import json
 import os
 import shlex
 import re
@@ -48,7 +47,6 @@ class BatchJobSpec:
     extra_args: tuple[str, ...]
     env: dict[str, str]
     path_overrides: dict[str, str]
-    scheduler: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -59,7 +57,6 @@ class PreparedJob:
     env: dict[str, str]
     pbs_env: dict[str, str]
     config_path: Path
-    scheduler: dict[str, Any]
     checkpoint_path: Optional[Path]
     pbs_script_path: Optional[Path] = None
     pbs_stdout_path: Optional[Path] = None
@@ -161,9 +158,11 @@ def parse_job_spec(
     path_overrides = _string_mapping(
         raw_job.get("paths", {}), "paths", index, source_path
     )
-    scheduler = _mapping(
-        raw_job.get("scheduler", {}), "scheduler", index, source_path
-    )
+    if "scheduler" in raw_job:
+        raise ValueError(
+            f"Job #{index} in '{source_path}' must not define 'scheduler'. "
+            "Put PBS settings directly in the PBS template."
+        )
 
     restart = raw_job.get("restart", False)
     if not isinstance(restart, bool):
@@ -188,7 +187,6 @@ def parse_job_spec(
         extra_args=extra_args,
         env=env,
         path_overrides=path_overrides,
-        scheduler=scheduler,
     )
 
 
@@ -250,7 +248,6 @@ def prepare_jobs(
                 env=env,
                 pbs_env=pbs_env,
                 config_path=written_config,
-                scheduler=job.scheduler,
                 checkpoint_path=(
                     resolve_runtime_path(job.checkpoint)
                     if job.checkpoint is not None
@@ -432,7 +429,6 @@ def submit_pbs_jobs(
             f"PBS submit command '{qsub_command}' was not found on PATH."
         )
 
-    scheduler = resolve_common_scheduler(prepared_jobs)
     task_script_dir = submission_dir / "tasks"
     submission_dir.mkdir(parents=True, exist_ok=True)
     task_script_dir.mkdir(parents=True, exist_ok=True)
@@ -463,10 +459,8 @@ def submit_pbs_jobs(
     array_script_path.write_text(
         render_array_pbs_script(
             template=pbs_template_path.read_text(),
-            scheduler=scheduler,
             job_count=len(prepared_jobs),
             manifest_path=task_manifest_path,
-            job_name="batch_md_array",
             stdout_path=submission_dir / "batch_array.out",
             stderr_path=submission_dir / "batch_array.err",
         )
@@ -520,139 +514,18 @@ def render_task_script(
 def render_array_pbs_script(
     *,
     template: str,
-    scheduler: dict[str, Any],
     job_count: int,
     manifest_path: Path,
-    job_name: str,
     stdout_path: Path,
     stderr_path: Path,
 ) -> str:
-    queue_directive = _pbs_directive("q", scheduler.get("queue"))
-    account_directive = _pbs_directive("A", scheduler.get("account"))
-    walltime = scheduler.get("walltime")
-    walltime_directive = (
-        f"#PBS -l walltime={walltime}\n"
-        if walltime is not None and str(walltime).strip()
-        else ""
-    )
-    resource_directive = _pbs_resource_directive(scheduler.get("resources"))
-    array_directive = _pbs_array_directive(
-        job_count=job_count,
-        array_flag=scheduler.get("array_flag", "J"),
-        max_concurrent=scheduler.get("max_concurrent"),
-        submit_flags=scheduler.get("submit_flags"),
-    )
     return template.format(
-        job_name=job_name,
-        queue_directive=queue_directive,
-        account_directive=account_directive,
-        resource_directive=resource_directive,
-        walltime_directive=walltime_directive,
-        array_directive=array_directive,
+        job_count=job_count,
         stdout_path=stdout_path,
         stderr_path=stderr_path,
         workdir=shlex.quote(str(Path.cwd())),
         manifest_path=shlex.quote(str(manifest_path)),
-        module_lines=_lines_block(scheduler.get("module_lines")),
-        pre_command_lines=_lines_block(scheduler.get("pre_command_lines")),
     )
-
-
-def _pbs_directive(flag: str, value: Optional[str]) -> str:
-    if value is None or not str(value).strip():
-        return ""
-    return f"#PBS -{flag} {value}\n"
-
-
-def _pbs_resource_directive(resources: Any) -> str:
-    if resources is None:
-        return ""
-    if isinstance(resources, str) and resources.strip():
-        return f"#PBS -l {resources.strip()}\n"
-    if not isinstance(resources, dict) or not resources:
-        return ""
-    bits = []
-    for key, value in resources.items():
-        bits.append(f"{key}={value}")
-    return "#PBS -l " + ":".join(bits) + "\n"
-
-
-def _lines_block(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value if value.endswith("\n") else value + "\n"
-    if isinstance(value, list):
-        lines = []
-        for item in value:
-            lines.append(str(item))
-        return "".join(line if line.endswith("\n") else line + "\n" for line in lines)
-    return ""
-
-
-def _pbs_submit_flags(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        items = [value]
-    elif isinstance(value, list):
-        items = [str(item) for item in value]
-    else:
-        return ""
-
-    lines = []
-    for item in items:
-        stripped = item.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("#PBS"):
-            lines.append(stripped if stripped.endswith("\n") else stripped + "\n")
-        elif stripped.startswith("-"):
-            lines.append(f"#PBS {stripped}\n")
-        else:
-            lines.append(f"#PBS -{stripped}\n")
-    return "".join(lines)
-
-
-def _pbs_array_directive(
-    *,
-    job_count: int,
-    array_flag: Any,
-    max_concurrent: Any,
-    submit_flags: Any,
-) -> str:
-    if array_flag not in {"J", "t"}:
-        raise ValueError("scheduler.array_flag must be 'J' or 't'.")
-
-    array_range = f"1-{job_count}"
-    if max_concurrent is not None:
-        if (
-            isinstance(max_concurrent, bool)
-            or not isinstance(max_concurrent, int)
-            or max_concurrent <= 0
-        ):
-            raise ValueError("scheduler.max_concurrent must be a positive integer.")
-        array_range += f"%{max_concurrent}"
-
-    directive = f"#PBS -{array_flag} {array_range}\n"
-    return directive + _pbs_submit_flags(submit_flags)
-
-
-def resolve_common_scheduler(prepared_jobs: list[PreparedJob]) -> dict[str, Any]:
-    if not prepared_jobs:
-        raise ValueError("At least one job is required to build a PBS array.")
-
-    base_scheduler = prepared_jobs[0].scheduler
-    for job in prepared_jobs[1:]:
-        if _scheduler_signature(job.scheduler) != _scheduler_signature(base_scheduler):
-            raise ValueError(
-                "PBS array mode requires all jobs to share the same scheduler settings."
-            )
-    return base_scheduler
-
-
-def _scheduler_signature(scheduler: dict[str, Any]) -> str:
-    return json.dumps(scheduler, sort_keys=True, separators=(",", ":"), default=str)
 
 
 def run_batch_jobs(
@@ -727,18 +600,6 @@ def _string_mapping(
             f"Job #{index} in '{source_path}' must define '{field_name}' as a mapping."
     )
     return {str(key): str(item) for key, item in value.items()}
-
-
-def _mapping(
-    value: Any, field_name: str, index: int, source_path: Path
-) -> dict[str, Any]:
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError(
-            f"Job #{index} in '{source_path}' must define '{field_name}' as a mapping."
-        )
-    return dict(value)
 
 
 def _coerce_float(

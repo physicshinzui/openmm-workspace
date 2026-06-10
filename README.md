@@ -55,17 +55,22 @@ python batch_md.py --jobs jobs.yaml --mode pbs
 If a job sets `replicas: N`, the launcher expands it into `N` independent array tasks and appends a replica suffix to `paths.run_id` so the output directories do not collide.
 Each PBS submission writes an immutable snapshot under `generated_configs/pbs_submissions/<submission-id>/`, so later submissions cannot overwrite the configs or task scripts of queued arrays.
 
-`scheduler` settings must be identical across all jobs in a PBS array. The current template understands:
+PBS resources, queue, walltime, array concurrency, modules, and environment setup
+are written directly in `scheduler/pbs/md_job.pbs.j2`. They are not configured in
+`jobs.yaml`.
 
-- `queue`
-- `account`
-- `walltime`
-- `resources`
-- `submit_flags`
-- `module_lines`
-- `pre_command_lines`
-- `array_flag` — `J` for OpenPBS/PBS Pro (default), or `t` for Torque
-- `max_concurrent` — optional positive integer limiting simultaneously running tasks
+The default template uses OpenPBS/PBS Pro syntax:
+
+```bash
+#PBS -l select=1:ncpus=3:ngpus=1
+#PBS -l walltime=12:00:00
+#PBS -J 1-{job_count}%4
+```
+
+Edit the template directly for the target cluster. For Torque, change the array
+directive from `#PBS -J 1-{job_count}%4` to `#PBS -t 1-{job_count}%4`.
+Use `--pbs-template path/to/custom.pbs.j2` to select a different hard-coded
+cluster template.
 
 At minimum, each batch entry should define:
 
