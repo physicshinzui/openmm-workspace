@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import os
 import shlex
 import re
@@ -361,69 +362,114 @@ def submit_pbs_jobs(
             f"PBS submit command '{qsub_command}' was not found on PATH."
         )
 
-    template = pbs_template_path.read_text()
+    scheduler = resolve_common_scheduler(prepared_jobs)
     pbs_script_dir = generated_config_dir / "pbs"
+    task_script_dir = pbs_script_dir / "tasks"
     pbs_script_dir.mkdir(parents=True, exist_ok=True)
+    task_script_dir.mkdir(parents=True, exist_ok=True)
+
+    task_manifest_path = pbs_script_dir / "task_manifest.txt"
+    task_script_paths: list[Path] = []
 
     for job in prepared_jobs:
-        script_path = pbs_script_dir / f"{job.name}.pbs"
-        stdout_path = pbs_script_dir / f"{job.name}.out"
-        stderr_path = pbs_script_dir / f"{job.name}.err"
-        script_path.write_text(
-            render_pbs_script(
-                template=template,
+        task_script_path = task_script_dir / f"{job.name}.sh"
+        task_stdout_path = task_script_dir / f"{job.name}.out"
+        task_stderr_path = task_script_dir / f"{job.name}.err"
+        task_script_path.write_text(
+            render_task_script(
                 job=job,
-                stdout_path=stdout_path,
-                stderr_path=stderr_path,
+                stdout_path=task_stdout_path,
+                stderr_path=task_stderr_path,
             )
         )
-        print(f"[job {job.index:03d} | {job.name}] PBS script: {script_path}")
-        print(f"[job {job.index:03d} | {job.name}] qsub command: {qsub_command} {script_path}")
-        if dry_run:
-            continue
+        os.chmod(task_script_path, 0o755)
+        task_script_paths.append(task_script_path)
+        print(f"[job {job.index:03d} | {job.name}] task script: {task_script_path}")
 
-        completed = subprocess.run(
-            [qsub_command, str(script_path)],
-            check=False,
-            capture_output=True,
-            text=True,
+    task_manifest_path.write_text(
+        "".join(f"{path.as_posix()}\n" for path in task_script_paths)
+    )
+
+    array_script_path = pbs_script_dir / "batch_array.pbs"
+    array_script_path.write_text(
+        render_array_pbs_script(
+            template=pbs_template_path.read_text(),
+            scheduler=scheduler,
+            job_count=len(prepared_jobs),
+            manifest_path=task_manifest_path,
+            job_name="batch_md_array",
+            stdout_path=pbs_script_dir / "batch_array.out",
+            stderr_path=pbs_script_dir / "batch_array.err",
         )
-        if completed.returncode != 0:
-            if completed.stderr:
-                print(completed.stderr.rstrip(), file=sys.stderr)
-            raise SystemExit(completed.returncode)
-        if completed.stdout.strip():
-            print(
-                f"[job {job.index:03d} | {job.name}] qsub response: {completed.stdout.strip()}"
-            )
+    )
+    os.chmod(array_script_path, 0o755)
+
+    print(f"[pbs] array script: {array_script_path}")
+    print(f"[pbs] manifest: {task_manifest_path}")
+    print(f"[pbs] qsub command: {qsub_command} {array_script_path}")
+    if dry_run:
+        return
+
+    completed = subprocess.run(
+        [qsub_command, str(array_script_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        if completed.stderr:
+            print(completed.stderr.rstrip(), file=sys.stderr)
+        raise SystemExit(completed.returncode)
+    if completed.stdout.strip():
+        print(f"[pbs] qsub response: {completed.stdout.strip()}")
 
 
-def render_pbs_script(
+def render_task_script(
     *,
-    template: str,
     job: PreparedJob,
     stdout_path: Path,
     stderr_path: Path,
 ) -> str:
+    env_lines = "".join(
+        f"export {key}={shlex.quote(value)}\n" for key, value in job.pbs_env.items()
+    )
     command = shlex.join(job.command)
-    scheduler = job.scheduler
+    return (
+        "#!/bin/bash\n"
+        "set -euo pipefail\n\n"
+        f"exec > {shlex.quote(str(stdout_path))} 2> {shlex.quote(str(stderr_path))}\n\n"
+        f"echo \"[$(date --iso-8601=seconds)] starting job {job.name}\"\n"
+        f"echo \"Working directory: {Path.cwd()}\"\n\n"
+        f"cd {shlex.quote(str(Path.cwd()))}\n\n"
+        f"{env_lines}"
+        f"echo \"[$(date --iso-8601=seconds)] launching: {command}\"\n"
+        f"{command}\n\n"
+        f"echo \"[$(date --iso-8601=seconds)] job {job.name} finished\"\n"
+    )
+
+
+def render_array_pbs_script(
+    *,
+    template: str,
+    scheduler: dict[str, Any],
+    job_count: int,
+    manifest_path: Path,
+    job_name: str,
+    stdout_path: Path,
+    stderr_path: Path,
+) -> str:
     queue_directive = _pbs_directive("q", scheduler.get("queue"))
     account_directive = _pbs_directive("A", scheduler.get("account"))
     walltime = scheduler.get("walltime")
     walltime_directive = (
-        f"#PBS -l walltime={walltime}\n" if walltime is not None and str(walltime).strip() else ""
+        f"#PBS -l walltime={walltime}\n"
+        if walltime is not None and str(walltime).strip()
+        else ""
     )
     resource_directive = _pbs_resource_directive(scheduler.get("resources"))
-    array_directive = _pbs_directive("t", scheduler.get("array")) + _pbs_submit_flags(
-        scheduler.get("submit_flags")
-    )
-    module_lines = _lines_block(scheduler.get("module_lines"))
-    pre_command_lines = _lines_block(scheduler.get("pre_command_lines"))
-    env_lines = "".join(
-        f"export {key}={shlex.quote(value)}\n" for key, value in job.pbs_env.items()
-    )
+    array_directive = _pbs_array_directive(job_count, scheduler.get("submit_flags"))
     return template.format(
-        job_name=job.name,
+        job_name=job_name,
         queue_directive=queue_directive,
         account_directive=account_directive,
         resource_directive=resource_directive,
@@ -431,11 +477,8 @@ def render_pbs_script(
         array_directive=array_directive,
         stdout_path=stdout_path,
         stderr_path=stderr_path,
-        workdir=Path.cwd(),
-        module_lines=module_lines,
-        pre_command_lines=pre_command_lines,
-        env_lines=env_lines,
-        command=command,
+        workdir=shlex.quote(str(Path.cwd())),
+        manifest_path=shlex.quote(str(manifest_path)),
     )
 
 
@@ -493,6 +536,28 @@ def _pbs_submit_flags(value: Any) -> str:
         else:
             lines.append(f"#PBS -{stripped}\n")
     return "".join(lines)
+
+
+def _pbs_array_directive(job_count: int, submit_flags: Any) -> str:
+    directive = f"#PBS -t 1-{job_count}\n"
+    return directive + _pbs_submit_flags(submit_flags)
+
+
+def resolve_common_scheduler(prepared_jobs: list[PreparedJob]) -> dict[str, Any]:
+    if not prepared_jobs:
+        raise ValueError("At least one job is required to build a PBS array.")
+
+    base_scheduler = prepared_jobs[0].scheduler
+    for job in prepared_jobs[1:]:
+        if _scheduler_signature(job.scheduler) != _scheduler_signature(base_scheduler):
+            raise ValueError(
+                "PBS array mode requires all jobs to share the same scheduler settings."
+            )
+    return base_scheduler
+
+
+def _scheduler_signature(scheduler: dict[str, Any]) -> str:
+    return json.dumps(scheduler, sort_keys=True, separators=(",", ":"), default=str)
 
 
 def run_batch_jobs(

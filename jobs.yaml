@@ -1,4 +1,4 @@
-# Sequential runs for all dipeptide structures.
+# Array runs for multiple independent PDB inputs.
 # Launch locally:
 #   python batch_md.py --jobs jobs.yaml --mode local --workers 1
 # Generate PBS scripts (dry-run):
@@ -8,7 +8,7 @@
   pdb: ../biomolecular_model_systems/peptides/small/dipeptides/A.pdb
   run_id: test_msm_A
   replicas: 4
-#  scheduler:
+#  scheduler:  # Must be identical across all jobs in PBS array mode.
 #    queue: gpu
 #    walltime: "12:00:00"
 #    resources:

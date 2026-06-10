@@ -52,7 +52,7 @@ def parse_args() -> argparse.Namespace:
         "--mode",
         choices=("local", "pbs"),
         default="local",
-        help="Execution mode: run jobs locally or submit each job with qsub.",
+        help="Execution mode: run jobs locally or submit one PBS job array with qsub.",
     )
     parser.add_argument(
         "--workers",

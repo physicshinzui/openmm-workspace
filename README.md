@@ -45,16 +45,16 @@ python batch_md.py --jobs jobs.yaml --workers 1
 
 Each job inherits a base config, overrides path-level fields such as `paths.pdb` or `paths.prmtop`/`paths.inpcrd` and `paths.run_id`, writes a generated config into `generated_configs/`, then launches `01_md.py` with that generated config.
 
-For PBS systems, submit each job independently with `qsub`:
+For PBS systems, submit the whole batch as one job array with `qsub`:
 
 ```bash
 python batch_md.py --jobs jobs.yaml --mode pbs --dry-run
 python batch_md.py --jobs jobs.yaml --mode pbs
 ```
 
-If a job sets `replicas: N`, the launcher expands it into `N` independent jobs and appends a replica suffix to `paths.run_id` so the output directories do not collide.
+If a job sets `replicas: N`, the launcher expands it into `N` independent array tasks and appends a replica suffix to `paths.run_id` so the output directories do not collide.
 
-Job-level `scheduler` fields are copied into the PBS script header. The current template understands:
+`scheduler` settings must be identical across all jobs in a PBS array. The current template understands:
 
 - `queue`
 - `account`
