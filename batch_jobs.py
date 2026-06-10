@@ -10,10 +10,18 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+from uuid import uuid4
 
-from md_config import load_yaml_list, load_yaml_mapping, write_yaml_mapping
+from md_config import (
+    load_simulation_config,
+    load_yaml_list,
+    load_yaml_mapping,
+    resolve_runtime_path,
+    write_yaml_mapping,
+)
 
 
 DEFAULT_JOBS_PATH = Path("jobs.yaml")
@@ -52,6 +60,7 @@ class PreparedJob:
     pbs_env: dict[str, str]
     config_path: Path
     scheduler: dict[str, Any]
+    checkpoint_path: Optional[Path]
     pbs_script_path: Optional[Path] = None
     pbs_stdout_path: Optional[Path] = None
     pbs_stderr_path: Optional[Path] = None
@@ -129,7 +138,8 @@ def parse_job_spec(
     if job_name is None:
         name = derive_job_name(index, pdb, prmtop, run_id)
     else:
-        name = _require_non_empty_string(job_name, "name", index, source_path)
+        raw_name = _require_non_empty_string(job_name, "name", index, source_path)
+        name = sanitize_component(raw_name)
 
     config_path_raw = raw_job.get("config", default_config_path)
     config_path = _coerce_path(config_path_raw, "config", index, source_path)
@@ -147,6 +157,7 @@ def parse_job_spec(
     extra_args = tuple(str(arg) for arg in extra_args_raw)
 
     env = _string_mapping(raw_job.get("env", {}), "env", index, source_path)
+    validate_env_names(env, index, source_path)
     path_overrides = _string_mapping(
         raw_job.get("paths", {}), "paths", index, source_path
     )
@@ -214,8 +225,10 @@ def prepare_jobs(
 ) -> list[PreparedJob]:
     base_config_cache: dict[Path, dict[str, Any]] = {}
     prepared: list[PreparedJob] = []
+    expanded_jobs = expand_job_specs(jobs)
+    validate_unique_job_names(expanded_jobs)
 
-    for job in expand_job_specs(jobs):
+    for job in expanded_jobs:
         template_path = job.config_path if job.config_path else default_config_path
         base_config = load_base_config(template_path, base_config_cache)
         merged_config = prepare_config(base_config, job)
@@ -238,10 +251,67 @@ def prepare_jobs(
                 pbs_env=pbs_env,
                 config_path=written_config,
                 scheduler=job.scheduler,
+                checkpoint_path=(
+                    resolve_runtime_path(job.checkpoint)
+                    if job.checkpoint is not None
+                    else None
+                ),
             )
         )
 
+    validate_unique_output_paths(prepared)
     return prepared
+
+
+def validate_unique_job_names(jobs: list[BatchJobSpec]) -> None:
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+    for job in jobs:
+        if job.name in seen:
+            duplicates.add(job.name)
+        seen.add(job.name)
+
+    if duplicates:
+        duplicate_list = ", ".join(sorted(duplicates))
+        raise ValueError(f"Expanded batch job names must be unique: {duplicate_list}")
+
+
+def validate_env_names(env: dict[str, str], index: int, source_path: Path) -> None:
+    invalid_names = sorted(
+        name for name in env if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) is None
+    )
+    if invalid_names:
+        invalid_list = ", ".join(invalid_names)
+        raise ValueError(
+            f"Job #{index} in '{source_path}' has invalid environment variable names: "
+            f"{invalid_list}"
+        )
+
+
+def validate_unique_output_paths(prepared_jobs: list[PreparedJob]) -> None:
+    owners: dict[Path, str] = {}
+    collisions: list[str] = []
+
+    for job in prepared_jobs:
+        paths = load_simulation_config(job.config_path).paths
+        output_paths = (
+            paths.topology_path,
+            paths.minimized_path,
+            paths.trajectory_path,
+            paths.log_path,
+            job.checkpoint_path or paths.checkpoint_path,
+        )
+        for output_path in output_paths:
+            resolved_path = output_path.resolve()
+            owner = owners.get(resolved_path)
+            if owner is not None:
+                collisions.append(f"{resolved_path} ({owner}, {job.name})")
+            else:
+                owners[resolved_path] = job.name
+
+    if collisions:
+        collision_list = "; ".join(collisions)
+        raise ValueError(f"Batch jobs must not share output paths: {collision_list}")
 
 
 def load_base_config(
@@ -352,7 +422,7 @@ def run_jobs(prepared_jobs: list[PreparedJob], workers: int, dry_run: bool) -> N
 
 def submit_pbs_jobs(
     prepared_jobs: list[PreparedJob],
-    generated_config_dir: Path,
+    submission_dir: Path,
     pbs_template_path: Path,
     dry_run: bool,
     qsub_command: str = "qsub",
@@ -363,12 +433,11 @@ def submit_pbs_jobs(
         )
 
     scheduler = resolve_common_scheduler(prepared_jobs)
-    pbs_script_dir = generated_config_dir / "pbs"
-    task_script_dir = pbs_script_dir / "tasks"
-    pbs_script_dir.mkdir(parents=True, exist_ok=True)
+    task_script_dir = submission_dir / "tasks"
+    submission_dir.mkdir(parents=True, exist_ok=True)
     task_script_dir.mkdir(parents=True, exist_ok=True)
 
-    task_manifest_path = pbs_script_dir / "task_manifest.txt"
+    task_manifest_path = submission_dir / "task_manifest.txt"
     task_script_paths: list[Path] = []
 
     for job in prepared_jobs:
@@ -390,7 +459,7 @@ def submit_pbs_jobs(
         "".join(f"{path.as_posix()}\n" for path in task_script_paths)
     )
 
-    array_script_path = pbs_script_dir / "batch_array.pbs"
+    array_script_path = submission_dir / "batch_array.pbs"
     array_script_path.write_text(
         render_array_pbs_script(
             template=pbs_template_path.read_text(),
@@ -398,8 +467,8 @@ def submit_pbs_jobs(
             job_count=len(prepared_jobs),
             manifest_path=task_manifest_path,
             job_name="batch_md_array",
-            stdout_path=pbs_script_dir / "batch_array.out",
-            stderr_path=pbs_script_dir / "batch_array.err",
+            stdout_path=submission_dir / "batch_array.out",
+            stderr_path=submission_dir / "batch_array.err",
         )
     )
     os.chmod(array_script_path, 0o755)
@@ -438,13 +507,13 @@ def render_task_script(
         "#!/bin/bash\n"
         "set -euo pipefail\n\n"
         f"exec > {shlex.quote(str(stdout_path))} 2> {shlex.quote(str(stderr_path))}\n\n"
-        f"echo \"[$(date --iso-8601=seconds)] starting job {job.name}\"\n"
-        f"echo \"Working directory: {Path.cwd()}\"\n\n"
+        f"printf '[%s] starting job %s\\n' \"$(date -Iseconds)\" {shlex.quote(job.name)}\n"
+        f"printf 'Working directory: %s\\n' {shlex.quote(str(Path.cwd()))}\n\n"
         f"cd {shlex.quote(str(Path.cwd()))}\n\n"
         f"{env_lines}"
-        f"echo \"[$(date --iso-8601=seconds)] launching: {command}\"\n"
+        f"printf '[%s] launching: %s\\n' \"$(date -Iseconds)\" {shlex.quote(command)}\n"
         f"{command}\n\n"
-        f"echo \"[$(date --iso-8601=seconds)] job {job.name} finished\"\n"
+        f"printf '[%s] job %s finished\\n' \"$(date -Iseconds)\" {shlex.quote(job.name)}\n"
     )
 
 
@@ -467,7 +536,12 @@ def render_array_pbs_script(
         else ""
     )
     resource_directive = _pbs_resource_directive(scheduler.get("resources"))
-    array_directive = _pbs_array_directive(job_count, scheduler.get("submit_flags"))
+    array_directive = _pbs_array_directive(
+        job_count=job_count,
+        array_flag=scheduler.get("array_flag", "J"),
+        max_concurrent=scheduler.get("max_concurrent"),
+        submit_flags=scheduler.get("submit_flags"),
+    )
     return template.format(
         job_name=job_name,
         queue_directive=queue_directive,
@@ -479,6 +553,8 @@ def render_array_pbs_script(
         stderr_path=stderr_path,
         workdir=shlex.quote(str(Path.cwd())),
         manifest_path=shlex.quote(str(manifest_path)),
+        module_lines=_lines_block(scheduler.get("module_lines")),
+        pre_command_lines=_lines_block(scheduler.get("pre_command_lines")),
     )
 
 
@@ -538,8 +614,27 @@ def _pbs_submit_flags(value: Any) -> str:
     return "".join(lines)
 
 
-def _pbs_array_directive(job_count: int, submit_flags: Any) -> str:
-    directive = f"#PBS -t 1-{job_count}\n"
+def _pbs_array_directive(
+    *,
+    job_count: int,
+    array_flag: Any,
+    max_concurrent: Any,
+    submit_flags: Any,
+) -> str:
+    if array_flag not in {"J", "t"}:
+        raise ValueError("scheduler.array_flag must be 'J' or 't'.")
+
+    array_range = f"1-{job_count}"
+    if max_concurrent is not None:
+        if (
+            isinstance(max_concurrent, bool)
+            or not isinstance(max_concurrent, int)
+            or max_concurrent <= 0
+        ):
+            raise ValueError("scheduler.max_concurrent must be a positive integer.")
+        array_range += f"%{max_concurrent}"
+
+    directive = f"#PBS -{array_flag} {array_range}\n"
     return directive + _pbs_submit_flags(submit_flags)
 
 
@@ -574,23 +669,36 @@ def run_batch_jobs(
     dry_run: bool,
 ) -> None:
     job_specs = load_job_specs(jobs_path, default_config_path)
+    submission_dir: Optional[Path] = None
+    effective_generated_config_dir = generated_config_dir
+    if mode == "pbs":
+        submission_dir = create_pbs_submission_dir(generated_config_dir)
+        effective_generated_config_dir = submission_dir / "configs"
+
     prepared_jobs = prepare_jobs(
         jobs=job_specs,
         default_config_path=default_config_path,
-        generated_config_dir=generated_config_dir,
+        generated_config_dir=effective_generated_config_dir,
         md_script=md_script,
         python_executable=python_executable,
     )
     if mode == "pbs":
+        assert submission_dir is not None
         submit_pbs_jobs(
             prepared_jobs,
-            generated_config_dir=generated_config_dir,
+            submission_dir=submission_dir,
             pbs_template_path=pbs_template_path,
             dry_run=dry_run,
             qsub_command=qsub_command,
         )
         return
     run_jobs(prepared_jobs, workers, dry_run)
+
+
+def create_pbs_submission_dir(generated_config_dir: Path) -> Path:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    submission_id = f"{timestamp}-{uuid4().hex[:8]}"
+    return generated_config_dir / "pbs_submissions" / submission_id
 
 
 def _require_non_empty_string(

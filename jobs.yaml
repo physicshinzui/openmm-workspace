@@ -11,12 +11,18 @@
 #  scheduler:  # Must be identical across all jobs in PBS array mode.
 #    queue: gpu
 #    walltime: "12:00:00"
+#    array_flag: J  # Use "t" for Torque.
+#    max_concurrent: 4
 #    resources:
 #      nodes: 1
 #      ppn: 3
 #      gpus: 1
 #    submit_flags:
 #      - "-l place=scatter"
+#    module_lines:
+#      - "module load cuda"
+#    pre_command_lines:
+#      - "conda activate openmm"
   env:
     CUDA_VISIBLE_DEVICES: "0"
 

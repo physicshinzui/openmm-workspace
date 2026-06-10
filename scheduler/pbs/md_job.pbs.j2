@@ -14,18 +14,19 @@ fi
 
 manifest_path={manifest_path}
 
-echo "[${{HOSTNAME}}] $(date --iso-8601=seconds) starting array task ${{task_id}}"
+echo "[${{HOSTNAME}}] $(date -Iseconds) starting array task ${{task_id}}"
 echo "Working directory: {workdir}"
 
 cd {workdir}
 
+{module_lines}{pre_command_lines}
 task_script="$(sed -n "${{task_id}}p" "${{manifest_path}}")"
 if [ -z "${{task_script}}" ]; then
   echo "No task script found for PBS array index ${{task_id}} in ${{manifest_path}}" >&2
   exit 1
 fi
 
-echo "[$(date --iso-8601=seconds)] launching task script: ${{task_script}}"
+echo "[$(date -Iseconds)] launching task script: ${{task_script}}"
 bash "${{task_script}}"
 
-echo "[$(date --iso-8601=seconds)] array task ${{task_id}} finished"
+echo "[$(date -Iseconds)] array task ${{task_id}} finished"

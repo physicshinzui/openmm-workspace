@@ -53,6 +53,7 @@ python batch_md.py --jobs jobs.yaml --mode pbs
 ```
 
 If a job sets `replicas: N`, the launcher expands it into `N` independent array tasks and appends a replica suffix to `paths.run_id` so the output directories do not collide.
+Each PBS submission writes an immutable snapshot under `generated_configs/pbs_submissions/<submission-id>/`, so later submissions cannot overwrite the configs or task scripts of queued arrays.
 
 `scheduler` settings must be identical across all jobs in a PBS array. The current template understands:
 
@@ -63,6 +64,8 @@ If a job sets `replicas: N`, the launcher expands it into `N` independent array 
 - `submit_flags`
 - `module_lines`
 - `pre_command_lines`
+- `array_flag` — `J` for OpenPBS/PBS Pro (default), or `t` for Torque
+- `max_concurrent` — optional positive integer limiting simultaneously running tasks
 
 At minimum, each batch entry should define:
 
