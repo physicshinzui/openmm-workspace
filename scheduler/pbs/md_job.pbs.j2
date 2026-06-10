@@ -1,20 +1,26 @@
 #!/bin/bash
 #PBS -N {job_name}
-{queue_directive}{account_directive}{resource_directive}{walltime_directive}{array_directive}#PBS -o {stdout_path}
+{queue_directive}{account_directive}{resource_directive}{walltime_directive}{array_directive}
+#PBS -o {stdout_path}
 #PBS -e {stderr_path}
-#PBS -j oe
 
 set -euo pipefail
 
 task_id="${{PBS_ARRAY_INDEX:-${{PBS_ARRAYID:-}}}}"
-if [ -z "${{task_id}}" ]; then
-  echo "Missing PBS array index environment variable." >&2
+case "${{task_id}}" in
+  ""|0|*[!0-9]*)
+    echo "Invalid or missing PBS array index: ${{task_id:-<unset>}}" >&2
+    exit 1
+    ;;
+esac
+
+manifest_path={manifest_path}
+if [ ! -r "${{manifest_path}}" ]; then
+  echo "Task manifest is not readable: ${{manifest_path}}" >&2
   exit 1
 fi
 
-manifest_path={manifest_path}
-
-echo "[${{HOSTNAME}}] $(date -Iseconds) starting array task ${{task_id}}"
+echo "[${{HOSTNAME:-unknown-host}}] $(date -Iseconds) starting array task ${{task_id}}"
 echo "Working directory: {workdir}"
 
 cd {workdir}
@@ -23,6 +29,10 @@ cd {workdir}
 task_script="$(sed -n "${{task_id}}p" "${{manifest_path}}")"
 if [ -z "${{task_script}}" ]; then
   echo "No task script found for PBS array index ${{task_id}} in ${{manifest_path}}" >&2
+  exit 1
+fi
+if [ ! -r "${{task_script}}" ]; then
+  echo "Task script is not readable: ${{task_script}}" >&2
   exit 1
 fi
 
