@@ -1,6 +1,7 @@
 # openmm workspace
 
 This repository provides a compact OpenMM workflow for energy minimisation, NVT, NPT, and production MD.
+Production MD runs under NPT conditions because the barostat added for NPT equilibration remains active during production.
 It is **config-first**: run parameters, file locations, reporting cadence, and restraint settings are managed in `config.yaml`.
 
 ## Repository layout
@@ -45,7 +46,7 @@ python batch_md.py --jobs jobs.yaml --workers 1
 
 Each job inherits a base config, overrides path-level fields such as `paths.pdb` or `paths.prmtop`/`paths.inpcrd` and `paths.run_id`, writes a generated config into `generated_configs/`, then launches `01_md.py` with that generated config.
 
-For PBS systems, submit the whole batch as one job array with `qsub`:
+For Grid Engine systems, submit the whole batch as one array job with `qsub`:
 
 ```bash
 python batch_md.py --jobs jobs.yaml --mode pbs --dry-run
@@ -55,22 +56,21 @@ python batch_md.py --jobs jobs.yaml --mode pbs
 If a job sets `replicas: N`, the launcher expands it into `N` independent array tasks and appends a replica suffix to `paths.run_id` so the output directories do not collide.
 Each PBS submission writes an immutable snapshot under `generated_configs/pbs_submissions/<submission-id>/`, so later submissions cannot overwrite the configs or task scripts of queued arrays.
 
-PBS resources, queue, walltime, array concurrency, modules, and environment setup
+Scheduler resources, queue, walltime, array concurrency, modules, and environment setup
 are written directly in `scheduler/pbs/md_job.pbs.j2`. They are not configured in
 `jobs.yaml`.
 
-The default template uses OpenPBS/PBS Pro syntax:
+The default template uses Grid Engine syntax:
 
 ```bash
-#PBS -l select=1:ncpus=3:ngpus=1
-#PBS -l walltime=12:00:00
-#PBS -J 1-{job_count}%4
+#$ -cwd
+#$ -t 1-{job_count}
+#$ -tc 4
 ```
 
-Edit the template directly for the target cluster. For Torque, change the array
-directive from `#PBS -J 1-{job_count}%4` to `#PBS -t 1-{job_count}%4`.
-Use `--pbs-template path/to/custom.pbs.j2` to select a different hard-coded
-cluster template.
+`SGE_TASK_ID` identifies the array task. Edit the template directly for the target
+cluster. Use `--pbs-template path/to/custom.pbs.j2` to select a different
+hard-coded cluster template.
 
 At minimum, each batch entry should define:
 
