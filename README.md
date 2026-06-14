@@ -46,6 +46,75 @@ python batch_md.py --jobs jobs.yaml --workers 1
 
 Each job inherits a base config, overrides path-level fields such as `paths.pdb` or `paths.prmtop`/`paths.inpcrd` and `paths.run_id`, writes a generated config into `generated_configs/`, then launches `01_md.py` with that generated config.
 
+### Config values shared by batch jobs
+
+Jobs that select the same base config share every value in that config unless the
+job overrides a `paths` value. If a job does not set `config`, it uses the file
+selected by `batch_md.py --default-config`, which defaults to `config.yaml`.
+
+The complete list of config values inherited from the base config is:
+
+- `paths.input_format`
+- `paths.pdb`, or `paths.prmtop` and `paths.inpcrd`
+- `paths.output_root`
+- `paths.run_id`
+- `paths.topology`
+- `paths.minimized`
+- `paths.trajectory`
+- `paths.log`
+- `paths.checkpoint`
+- `force_fields`
+- `thermodynamics.temperature`
+- `thermodynamics.pressure`
+- `thermodynamics.friction_coefficient`
+- `thermodynamics.step_size`
+- `system.nonbonded_cutoff`
+- `system.solvent_padding`
+- `system.ionic_strength`
+- `system.hydrogen_mass`
+- `simulation.nvt_steps`
+- `simulation.npt_steps`
+- `simulation.production_steps`
+- `reporting.dcd_interval`
+- `reporting.stdout_interval`
+- `reporting.log_interval`
+- `restraints.force_constant`
+- `restraints.selection`
+
+The `force_fields` and `restraints` sections remain optional under the same rules
+as a single-run config. Batch entries cannot directly override `force_fields`,
+`thermodynamics`, `system`, `simulation`, `reporting`, or `restraints`. To use
+different values for any of those sections, create another config file and select
+it with the job's `config` field.
+
+The following batch entry fields override values in the generated config:
+
+| Batch field | Generated-config effect |
+| --- | --- |
+| `pdb` | Sets `paths.pdb` and removes `paths.prmtop` and `paths.inpcrd` |
+| `prmtop` and `inpcrd` | Set `paths.prmtop` and `paths.inpcrd`, and remove `paths.pdb` |
+| `output_root` | Sets `paths.output_root` |
+| `run_id` | Sets `paths.run_id` |
+| `paths` | Overrides any named key in the base config's `paths` mapping |
+| `replicas` | Appends `_repNNN` to `paths.run_id` for each expanded replica |
+
+When switching between PDB and Amber input modes, set `paths.input_format` to the
+matching mode in the job's `paths` mapping, unless the selected base config leaves
+it unset for auto-detection.
+
+All other supported batch entry fields control job selection or launch behavior
+without modifying the generated config:
+
+| Batch field | Meaning |
+| --- | --- |
+| `name` | Job name used for generated files and log messages |
+| `config` | Base config for this job |
+| `until_ns` | Passes `--until` to `01_md.py` |
+| `checkpoint` | Passes `--checkpoint` to `01_md.py`; does not change `paths.checkpoint` in the generated config |
+| `restart` | Passes `--restart` to `01_md.py` |
+| `extra_args` | Appends arguments to the `01_md.py` command |
+| `env` | Adds environment variables for the launched process |
+
 For Grid Engine systems, submit the whole batch as one array job with `qsub`:
 
 ```bash
