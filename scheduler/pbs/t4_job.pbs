@@ -1,0 +1,50 @@
+#!/bin/bash
+#$ -cwd
+#$ -l gpu_1=1
+#$ -l h_rt=00:30:00
+#$ -p -5
+#$ -N md
+#$ -j y
+#$ -t 1-2:1
+
+set -euo pipefail
+
+task_id="${{SGE_TASK_ID:-}}"
+case "${{task_id}}" in
+  ""|0|*[!0-9]*)
+    echo "Invalid or missing PBS array index: ${{task_id:-<unset>}}" >&2
+    exit 1
+    ;;
+esac
+
+manifest_path={manifest_path}
+if [ ! -r "${{manifest_path}}" ]; then
+  echo "Task manifest is not readable: ${{manifest_path}}" >&2
+  exit 1
+fi
+
+echo "[${{HOSTNAME:-unknown-host}}] $(date -Iseconds) starting array task ${{task_id}}"
+echo "Working directory: {workdir}"
+
+cd {workdir}
+
+# Add cluster-specific environment setup here.
+# module load cuda
+ source /gs/bs/tgh-26IDB/miniforge3/etc/profile.d/conda.sh
+ conda activate openmm
+# export CUDA_VISIBLE_DEVICES=0
+
+task_script="$(sed -n "${{task_id}}p" "${{manifest_path}}")"
+if [ -z "${{task_script}}" ]; then
+  echo "No task script found for PBS array index ${{task_id}} in ${{manifest_path}}" >&2
+  exit 1
+fi
+if [ ! -r "${{task_script}}" ]; then
+  echo "Task script is not readable: ${{task_script}}" >&2
+  exit 1
+fi
+
+echo "[$(date -Iseconds)] launching task script: ${{task_script}}"
+bash "${{task_script}}"
+
+echo "[$(date -Iseconds)] array task ${{task_id}} finished"
