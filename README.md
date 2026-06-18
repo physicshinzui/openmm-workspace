@@ -162,6 +162,58 @@ python center_trajectory.py \
 
 By default the script tries to use the MDTraj selection `protein` as the anchor molecule for imaging. If that selection matches no atoms, it falls back to MDTraj's default molecule-based imaging.
 
+## Thinning trajectories
+
+To retain every 100th frame from every `traj.dcd` below `data/amber19sb`:
+
+```bash
+python skip_traj.py --root data/amber19sb --stride 100 --dry-run
+python skip_traj.py --root data/amber19sb --stride 100
+```
+
+The default output name is `traj_stride<stride>.dcd`, placed beside each input
+trajectory. The original trajectory is never overwritten. Each output is first
+written to a temporary `.partial` file and is renamed only after its frame
+count, atom count, coordinates, and periodic box dimensions have been verified.
+Use `--overwrite` to replace an existing thinned trajectory.
+
+To process one trajectory:
+
+```bash
+python skip_traj.py \
+  --trajectory path/to/traj.dcd \
+  --topology path/to/topology.pdb \
+  --output path/to/traj_stride100.dcd \
+  --stride 100
+```
+
+## Extracting protein-only trajectories
+
+To write a protein-only DCD and matching protein-only PDB topology:
+
+```bash
+python extract_protein_trajectory.py \
+  --trajectory path/to/traj.dcd \
+  --topology path/to/topology.pdb \
+  --output path/to/traj_protein.dcd
+```
+
+The default selection is the MDAnalysis selection `protein`. Use `--selection`
+for a different atom selection. The default protein-only PDB path for a single
+trajectory is derived from the output DCD path, for example
+`traj_protein.pdb`.
+
+To process every `traj.dcd` below a root directory:
+
+```bash
+python extract_protein_trajectory.py --root data/amber19sb --dry-run
+python extract_protein_trajectory.py --root data/amber19sb
+```
+
+The batch mode writes `traj_protein.dcd` and `topology_protein.pdb` beside each
+input trajectory/topology pair. Existing outputs are not replaced unless
+`--overwrite` is given.
+
 ## `config.yaml` schema
 
 ### `paths`
